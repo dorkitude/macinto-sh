@@ -12,12 +12,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let state = AppState.shared
 
     private lazy var enabledIcon: NSImage = {
-        let img = AppleImage.emoji(pointSize: 15, canvas: 20)
+        // Full color with a red glow while enabled.
+        let img = AppleImage.glowing(pointSize: 13, canvas: 22, glow: 5)
         img.isTemplate = false
         return img
     }()
     private lazy var disabledIcon: NSImage = {
-        let img = AppleImage.dimmed(enabledIcon, alpha: 0.4)
+        let img = AppleImage.dimmed(AppleImage.emoji(pointSize: 14, canvas: 22), alpha: 0.4)
         img.isTemplate = false
         return img
     }()

@@ -13,6 +13,21 @@ enum AppleImage {
         }
     }
 
+    /// The emoji with a red glow behind it (menu bar icon while enabled).
+    static func glowing(pointSize: CGFloat, canvas: CGFloat, glow: CGFloat = 3.5) -> NSImage {
+        let base = emoji(pointSize: pointSize, canvas: canvas)
+        return NSImage(size: NSSize(width: canvas, height: canvas), flipped: false) { rect in
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+            ctx.setShadow(offset: .zero, blur: glow,
+                          color: NSColor(srgbRed: 1, green: 0.15, blue: 0.2, alpha: 1).cgColor)
+            base.draw(in: rect)
+            ctx.setShadow(offset: .zero, blur: glow * 0.5,
+                          color: NSColor(srgbRed: 1, green: 0.25, blue: 0.3, alpha: 0.9).cgColor)
+            base.draw(in: rect)
+            return true
+        }
+    }
+
     /// Grayscale, low-alpha version for the disabled state.
     static func dimmed(_ image: NSImage, alpha: CGFloat = 0.4) -> NSImage {
         let size = image.size
