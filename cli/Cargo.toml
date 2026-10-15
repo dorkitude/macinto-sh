@@ -4,7 +4,7 @@ version = "0.1.101"
 edition = "2021"
 description = "Command line client and MCP server for Macinto.sh.app"
 license = "MIT"
-repository = "https://github.com/dorkitude/macinto.sh"
+repository = "https://github.com/dorkitude/macinto-sh"
 publish = false
 
 # Cargo binary names can't contain a dot; the Makefile installs this as Contents/Helpers/macinto.sh.

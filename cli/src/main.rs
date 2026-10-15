@@ -1,5 +1,5 @@
 //! macinto.sh: command line client and MCP server for Macinto.sh.app.
-//! https://github.com/dorkitude/macinto.sh (MIT License)
+//! https://github.com/dorkitude/macinto-sh (MIT License)
 
 mod actions;
 mod cli;
