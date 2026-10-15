@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Root of the control window and the menu bar popover: onboarding until both permissions are on,
+/// Root of the control window: onboarding until both permissions are on,
 /// then the one-time tutorial, then the controls.
 struct MenuView: View {
     @ObservedObject var state: AppState

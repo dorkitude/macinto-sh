@@ -59,8 +59,8 @@ The CLI is a single native binary inside the app bundle
 </p>
 
 If your menu bar is full, macOS hides new menu bar icons without telling the
-app. When that happens Macinto.sh shows a small window with the same controls.
-It appears without taking keyboard focus. Run `open -a Macinto.sh` at any time
+app. When that happens Macinto.sh opens the control window on its own. It
+appears without taking keyboard focus. Run `open -a Macinto.sh` at any time
 to bring it back.
 
 ## Enabling, the timer, and the red apple
@@ -93,9 +93,9 @@ While enabled:
   below the menu bar. It ignores the mouse, shows on every Space, and is left
   out of Macinto.sh's own screenshots and recordings.
 
-The controls (menu bar popover or window) show the time remaining, the
-duration slider, and the last 10 requests: time, calling process and pid,
-command. Refused or failed requests are red.
+Clicking the menu bar 🍎 brings the control window to the front. It shows the
+time remaining, the duration slider, and the last 10 requests: time, calling
+process and pid, command. Refused or failed requests are red.
 
 ## CLI reference
 

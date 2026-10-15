@@ -6,7 +6,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static weak var current: AppDelegate?
 
     private var statusItem: NSStatusItem!
-    private var popover: NSPopover!
     private var server: SocketServer?
     let overlay = Overlay()
     private let state = AppState.shared
@@ -31,16 +30,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var controlWindow: NSWindow?
 
-    /// The same controls as the menu bar popover, in a small window. Used when the menu bar icon is
-    /// hidden, and whenever Macinto.sh is opened again while running (`open -a Macinto.sh`).
+    /// The single control window. Opened by clicking the menu bar icon, the overlay apple, the Dock
+    /// icon, or `open -a Macinto.sh` while running (all `explicit`), and on its own when setup is
+    /// needed at launch or macOS hides the menu bar icon.
     ///
-    /// `explicit` is false when the window appears on its own (menu bar full at launch): it is then
-    /// ordered front without activating the app or becoming key, so it never takes keyboard focus
-    /// from whatever the user is typing into. Even when explicit, no button is first responder and
+    /// `explicit` is false when the window appears on its own: it is then ordered front without
+    /// activating the app or becoming key, so it never takes keyboard focus from whatever the user
+    /// is typing into. When explicit, the app activates and the window comes to the front as key;
+    /// an already open window just stays in front. Even then, no button is first responder and
     /// none is bound to Return, so a stray keypress can't enable anything.
     func showControlWindow(explicit: Bool) {
         if controlWindow == nil {
-            let host = NSHostingController(rootView: makeMenuView(closeOnInstall: false))
+            let host = NSHostingController(rootView: makeMenuView())
             host.sizingOptions = .preferredContentSize
             // A normal window, not a floating panel: it doesn't stay on top of other apps, and
             // clicking it activates Macinto.sh so the main menu's shortcuts (⌘Q, ⌘W) work.
@@ -65,8 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ⌘Tab, so it can be found again after other windows cover it. This doesn't activate it.
         if NSApp.activationPolicy() != .regular { _ = NSApp.setActivationPolicy(.regular) }
         if explicit {
+            state.refreshPermissions()
             NSApp.activate()
-            p.orderFrontRegardless()
+            p.makeKeyAndOrderFront(nil)
         } else {
             p.orderFrontRegardless()
         }
@@ -74,21 +76,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if statusItemOnScreen, !popover.isShown {
-            togglePopover(nil)
-        } else {
-            showControlWindow(explicit: true)
-        }
+        showControlWindow(explicit: true)
         return false
     }
 
-    private func makeMenuView(closeOnInstall: Bool) -> MenuView {
+    private func makeMenuView() -> MenuView {
         MenuView(
             state: state,
             statusItemHidden: { [weak self] in !(self?.statusItemOnScreen ?? true) },
             installCLI: { [weak self] in
                 if self?.state.isPreview == true { ActionLog.shared.write(event: "DEBUG: preview: Install CLI ignored"); return }
-                if closeOnInstall { self?.popover.performClose(nil) }
                 CLIInstaller.install()
             },
             openLog: { NSWorkspace.shared.open(Paths.log) },
@@ -132,15 +129,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.target = self
-        statusItem.button?.action = #selector(togglePopover(_:))
+        statusItem.button?.action = #selector(statusItemClicked(_:))
         statusItem.button?.imagePosition = .imageOnly
-
-        popover = NSPopover()
-        popover.behavior = .transient
-        popover.appearance = NSAppearance(named: .darkAqua)
-        let host = NSHostingController(rootView: makeMenuView(closeOnInstall: true))
-        host.sizingOptions = .preferredContentSize
-        popover.contentViewController = host
 
         state.onEnabledChange = { [weak self] enabled in self?.enabledChanged(enabled) }
         overlay.onClick = { [weak self] in self?.showControlWindow(explicit: true) }
@@ -225,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         // Re-show without activating or taking key focus.
-        if !(popover?.isShown ?? false) { showControlWindow(explicit: false) }
+        showControlWindow(explicit: false)
     }
 
     private func updateIcon() {
@@ -233,13 +223,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.toolTip = state.enabled ? "\(Paths.displayName): enabled" : "\(Paths.displayName): disabled"
     }
 
-    @objc private func togglePopover(_ sender: Any?) {
-        if popover.isShown {
-            popover.performClose(sender)
-        } else if let button = statusItem.button {
-            state.refreshPermissions()
-            NSApp.activate()
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        }
+    /// Menu bar icon click: bring the control window to the front and focus it. Never closes it.
+    @objc private func statusItemClicked(_ sender: Any?) {
+        showControlWindow(explicit: true)
     }
 }

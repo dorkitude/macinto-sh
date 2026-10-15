@@ -30,7 +30,7 @@ final class AppState: ObservableObject {
     @Published private(set) var screenRecordingGranted = false
     @Published var recordingActive = false
 
-    /// Which screen the control window and popover show.
+    /// Which screen the control window shows.
     enum Screen: Equatable { case onboarding, tutorial, control }
     @Published private(set) var screen: Screen = .onboarding
     /// Set once the user clicks the Screen Recording button; shows the Relaunch button.
