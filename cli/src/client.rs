@@ -54,11 +54,11 @@ impl Error {
                 launch::WAIT.as_secs()
             ),
             Error::NotRunning(p) if p.ends_with("macinto-dev.sock") => format!(
-                "{APP} (Dev) is not running (nothing listening at {}). Start it with: open \"build/debug/Macinto.sh (Dev).app\"",
+                "{APP} (Dev) is not running (nothing listening at {}). Start it with: macinto.sh --dev setup",
                 p.display()
             ),
             Error::NotRunning(p) => format!(
-                "{APP} is not running (nothing listening at {}). Start it with: open -a {APP}",
+                "{APP} is not running (nothing listening at {}). Start it with: macinto.sh setup",
                 p.display()
             ),
             Error::App { message, .. } => message.clone(),
@@ -130,14 +130,19 @@ impl Client {
 
     /// Send one request and return `data` from a successful response.
     pub fn call(&self, req: &Request) -> Result<Value> {
-        let resp = match self.round_trip(req) {
+        self.call_tracked(req).map(|(data, _)| data)
+    }
+
+    /// Like `call`, and also says whether the app had to be launched first.
+    pub fn call_tracked(&self, req: &Request) -> Result<(Value, bool)> {
+        let (resp, launched) = match self.round_trip(req) {
             Err(Error::NotRunning(_)) if self.auto_launch => {
                 launch::launch_and_wait(&self.target, &self.socket, self.app_override.as_deref())?;
-                self.round_trip(req)?
+                (self.round_trip(req)?, true)
             }
-            other => other?,
+            other => (other?, false),
         };
-        self.interpret(resp)
+        self.interpret(resp).map(|d| (d, launched))
     }
 
     fn interpret(&self, resp: Response) -> Result<Value> {
@@ -191,7 +196,9 @@ mod tests {
         let c = Client::new(Some(PathBuf::from("/nonexistent/macinto-test.sock")));
         let e = c.call(&Request::new("status")).unwrap_err();
         assert!(matches!(e, Error::NotRunning(_)));
-        assert!(e.message().contains("open -a Macinto.sh"));
+        assert!(e.message().contains("Start it with: macinto.sh setup"), "{}", e.message());
+        let dev = Error::NotRunning(dev_socket());
+        assert!(dev.message().contains("Start it with: macinto.sh --dev setup"), "{}", dev.message());
         assert_eq!(e.exit_code(), 1);
     }
 
@@ -262,6 +269,24 @@ mod tests {
         let e = Client::new(Some(sock.clone())).call(&Request::new("apps")).unwrap_err();
         assert_eq!(e.code(), "disabled");
         assert_eq!(e.message(), "Macinto.sh is disabled.");
+        let _ = std::fs::remove_file(sock);
+    }
+
+    #[test]
+    fn setup_action_reports_shown_window() {
+        use crate::actions::{execute, Action};
+        let sock = fake_app("show", "{\"ok\":true,\"data\":{\"shown\":true,\"name\":\"Macinto.sh\",\"state\":\"disabled\",\"enabled\":false}}\n");
+        let d = execute(&Client::new(Some(sock.clone())), &Action::Setup).unwrap();
+        assert_eq!(d["shown"], true);
+        assert_eq!(d["launched"], false);
+        assert_eq!(crate::output::render("setup", &d), "Macinto.sh is open. Enable it in its window.");
+        let _ = std::fs::remove_file(sock);
+        // Not running and no auto-launch (--no-launch): not_running.
+        let e = execute(&Client::new(Some(PathBuf::from("/nonexistent/m.sock"))), &Action::Setup).unwrap_err();
+        assert_eq!(e.code(), "not_running");
+        // An older app's gate (no show_window) without auto-launch: its error passes through.
+        let sock = fake_app("show-old", "{\"ok\":false,\"code\":\"disabled\",\"error\":\"Macinto.sh is disabled.\"}\n");
+        assert_eq!(execute(&Client::new(Some(sock.clone())), &Action::Setup).unwrap_err().code(), "disabled");
         let _ = std::fs::remove_file(sock);
     }
 

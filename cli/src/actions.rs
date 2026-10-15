@@ -18,6 +18,8 @@ pub enum Action {
     RecordStop,
     /// Client-side sleep.
     Wait(f64),
+    /// `setup`: start the app if needed, then `show_window` (bring its window forward).
+    Setup,
     /// Derived from `status`.
     Permissions,
     Displays,
@@ -32,6 +34,7 @@ impl Action {
             Action::RecordStart(_) => "record_start".into(),
             Action::RecordStop => "record_stop".into(),
             Action::Wait(_) => "wait".into(),
+            Action::Setup => "setup".into(),
             Action::Permissions => "permissions".into(),
             Action::Displays => "displays".into(),
         }
@@ -68,6 +71,26 @@ pub fn execute(client: &Client, action: &Action) -> Result<Value> {
             }
             std::thread::sleep(std::time::Duration::from_secs_f64(*secs));
             Ok(json!({"waited": secs}))
+        }
+        Action::Setup => {
+            let (mut data, launched) = match client.call_tracked(&Request::new("show_window")) {
+                // An app older than this CLI (before 0.1.102) has no show_window: it answers
+                // bad_request, or setup/disabled from its gate (show_window itself is never gated).
+                // Open it again instead, which shows its window (the reopen event), and report status.
+                Err(Error::App { code, .. })
+                    if matches!(code.as_str(), "bad_request" | "setup" | "disabled") && client.auto_launch =>
+                {
+                    crate::launch::open_app(&client.target, client.app_override.as_deref())?;
+                    let mut s = client.call(&Request::new("status"))?;
+                    s["name"] = json!(client.target.name);
+                    (s, false)
+                }
+                other => other?,
+            };
+            if data.is_object() {
+                data["launched"] = json!(launched);
+            }
+            Ok(data)
         }
         Action::Permissions => {
             let s = client.call(&Request::new("status"))?;

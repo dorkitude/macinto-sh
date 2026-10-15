@@ -90,6 +90,15 @@ fn setup_line(setup: &Value) -> String {
     if setup["complete"].as_bool() == Some(true) {
         return "complete".into();
     }
+    let mut left = setup_left(setup);
+    if left.is_empty() {
+        left.push("finish it in the Macinto.sh window");
+    }
+    format!("incomplete ({})", left.join(", "))
+}
+
+/// Setup steps still missing, from the `setup` object.
+fn setup_left(setup: &Value) -> Vec<&'static str> {
     let mut left = Vec::new();
     if setup["accessibility"].as_bool() == Some(false) {
         left.push("accessibility missing");
@@ -100,10 +109,27 @@ fn setup_line(setup: &Value) -> String {
     if setup["test_capture"].as_bool() == Some(false) {
         left.push("test capture not done");
     }
-    if left.is_empty() {
-        left.push("finish it in the Macinto.sh window");
-    }
-    format!("incomplete ({})", left.join(", "))
+    left
+}
+
+/// One line for `setup`: the window is open, and what the person still has to do in it.
+fn setup_result(d: &Value) -> String {
+    let name = d["name"].as_str().filter(|n| !n.is_empty()).unwrap_or("Macinto.sh");
+    let started = if d["launched"].as_bool() == Some(true) { " (started it)" } else { "" };
+    let next = match d["state"].as_str() {
+        Some("setup") => {
+            let left = setup_left(&d["setup"]);
+            let left = if left.is_empty() { String::new() } else { format!(" ({})", left.join(", ")) };
+            format!("Finish setup in its window{left}, then enable it.")
+        }
+        Some("enabled") => {
+            let left = if d["remaining_seconds"].is_null() { "until turned off".to_string() } else { format!("{} s left", num(&d["remaining_seconds"])) };
+            format!("It is enabled ({left}).")
+        }
+        Some("disabled") => "Enable it in its window.".into(),
+        _ => "Finish setup / enable it in its window.".into(),
+    };
+    format!("{name} is open{started}. {next}")
 }
 
 /// Text for a successful result. Empty string means print nothing.
@@ -149,9 +175,10 @@ pub fn render(kind: &str, d: &Value) -> String {
             out.push(format!("accessibility: {}", granted(&d["accessibility"])));
             out.push(format!("screen_recording: {}", granted(&d["screen_recording"])));
             if d["accessibility"].as_bool() != Some(true) || d["screen_recording"].as_bool() != Some(true) {
-                out.push("Turn on missing permissions from the Macinto.sh setup screen (open -a Macinto.sh), or in System Settings > Privacy & Security.".into());
+                out.push("Turn on missing permissions from the Macinto.sh setup screen (run: macinto.sh setup), or in System Settings > Privacy & Security.".into());
             }
         }
+        "setup" | "show_window" => out.push(setup_result(d)),
         "displays" => {
             for disp in d["displays"].as_array().into_iter().flatten() {
                 out.push(display_line(disp));
@@ -237,7 +264,7 @@ mod tests {
     fn status_infinite() {
         let d = json!({"enabled": true, "unlimited": true, "remaining_seconds": null,
                        "permissions": {"accessibility": false, "screen_recording": true},
-                       "version": "0.1.101", "recording": false, "displays": []});
+                       "version": "0.1.102", "recording": false, "displays": []});
         let t = render("status", &d);
         assert!(t.contains("remaining: ∞"));
         assert!(t.contains("accessibility: missing"));
@@ -245,10 +272,33 @@ mod tests {
     }
 
     #[test]
+    fn setup_lines() {
+        let d = json!({"shown": true, "name": "Macinto.sh", "state": "setup", "launched": true,
+                       "setup": {"complete": false, "accessibility": false, "screen_recording": true, "test_capture": false}});
+        assert_eq!(
+            render("setup", &d),
+            "Macinto.sh is open (started it). Finish setup in its window (accessibility missing, test capture not done), then enable it."
+        );
+        let d = json!({"name": "Macinto.sh (Dev)", "state": "disabled", "launched": false, "setup": {"complete": true}});
+        assert_eq!(render("setup", &d), "Macinto.sh (Dev) is open. Enable it in its window.");
+        let d = json!({"name": "Macinto.sh", "state": "enabled", "remaining_seconds": 90});
+        assert_eq!(render("setup", &d), "Macinto.sh is open. It is enabled (90 s left).");
+        let d = json!({"name": "Macinto.sh", "state": "enabled", "remaining_seconds": null});
+        assert_eq!(render("setup", &d), "Macinto.sh is open. It is enabled (until turned off).");
+        assert_eq!(render("setup", &json!({})), "Macinto.sh is open. Finish setup / enable it in its window.");
+    }
+
+    #[test]
+    fn permissions_hint_names_setup_command() {
+        let t = render("permissions", &json!({"accessibility": false, "screen_recording": true}));
+        assert!(t.contains("macinto.sh setup"), "{t}");
+    }
+
+    #[test]
     fn status_setup_state() {
         let d = json!({"state": "setup", "enabled": false,
                        "setup": {"complete": false, "accessibility": false, "screen_recording": true, "test_capture": false},
-                       "permissions": {"accessibility": false, "screen_recording": true}, "version": "0.1.101"});
+                       "permissions": {"accessibility": false, "screen_recording": true}, "version": "0.1.102"});
         let t = render("status", &d);
         assert!(t.starts_with("state: setup needed\n"), "{t}");
         assert!(t.contains("setup: incomplete (accessibility missing, test capture not done)"), "{t}");

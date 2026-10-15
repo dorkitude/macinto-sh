@@ -21,7 +21,8 @@ const INSTRUCTIONS: &str = "\
 Macinto.sh drives this Mac (mouse, keyboard, accessibility tree, screenshots) through the \
 Macinto.sh menu bar app, which is started automatically if it isn't running. A person must finish \
 setup (permissions) and enable it in the app's window; until then every tool except status and keys \
-fails with a 'setup' or 'disabled' error, and no tool can enable it. Coordinates are \
+fails with a 'setup' or 'disabled' error, and no tool can enable it (a person runs `macinto.sh setup` \
+to open the window). Coordinates are \
 global points with the origin at the top-left of the main display. A typical loop: screenshot or ui \
 to observe, then click/type/key/press to act, then observe again.";
 
@@ -403,6 +404,11 @@ mod tests {
         ] {
             assert!(names.contains(&want), "missing tool {want}");
         }
+        // Showing (and focusing) the app's window is for people, not agents.
+        for hidden in ["setup", "show_window", "app"] {
+            assert!(!names.contains(&hidden), "{hidden} must not be an MCP tool");
+        }
+        assert!(to_action("show_window", &Map::new()).is_err());
         let mut sorted = names.clone();
         sorted.sort();
         sorted.dedup();
@@ -508,7 +514,7 @@ mod tests {
         // App not running: a tool result with isError, not a protocol error.
         let call = handle(&c, &json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "status", "arguments": {}}})).unwrap();
         assert_eq!(call["result"]["isError"], true);
-        assert!(call["result"]["content"][0]["text"].as_str().unwrap().contains("open -a Macinto.sh"));
+        assert!(call["result"]["content"][0]["text"].as_str().unwrap().contains("macinto.sh setup"));
         let bad_tool = handle(&c, &json!({"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "enable"}})).unwrap();
         assert_eq!(bad_tool["error"]["code"], -32602);
     }

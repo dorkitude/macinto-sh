@@ -144,6 +144,23 @@ fn mdfind(t: &Target) -> Option<PathBuf> {
 
 /// Launch the app (user-initiated, so it may come forward), then wait for `socket` to accept.
 pub fn launch_and_wait(t: &Target, socket: &Path, override_path: Option<&Path>) -> Result<PathBuf> {
+    let shown = open_app(t, override_path)?;
+    eprintln!("macinto.sh: {} was not running; launched {}", t.name, shown.display());
+    let deadline = Instant::now() + WAIT;
+    loop {
+        if answers(socket) {
+            return Ok(shown);
+        }
+        if Instant::now() >= deadline {
+            return Err(Error::LaunchTimedOut { app: t.name.to_string(), socket: socket.to_path_buf() });
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// `open` the app bundle (or `open -b` its bundle id). For a running app this sends the reopen
+/// event, which shows its window. Returns what was opened.
+pub fn open_app(t: &Target, override_path: Option<&Path>) -> Result<PathBuf> {
     let exe = std::env::current_exe().ok();
     let located = locate(t, override_path, exe.as_deref(), true)?;
     let mut open = Command::new("/usr/bin/open");
@@ -169,17 +186,7 @@ pub fn launch_and_wait(t: &Target, socket: &Path, override_path: Option<&Path>) 
         let msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
         return Err(Error::Local(format!("could not launch {}: {msg}", shown.display())));
     }
-    eprintln!("macinto.sh: {} was not running; launched {}", t.name, shown.display());
-    let deadline = Instant::now() + WAIT;
-    loop {
-        if answers(socket) {
-            return Ok(shown);
-        }
-        if Instant::now() >= deadline {
-            return Err(Error::LaunchTimedOut { app: t.name.to_string(), socket: socket.to_path_buf() });
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
+    Ok(shown)
 }
 
 /// True once the app answers a `ping` (a bare connect could succeed before the app is ready).

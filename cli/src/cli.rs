@@ -13,7 +13,8 @@ const ABOUT: &str = "Drive this Mac through Macinto.sh.app: click, type, read th
 const LONG_ABOUT: &str = "\
 Drive this Mac through Macinto.sh.app: click, type, read the UI tree, take screenshots.
 
-Macinto.sh.app must be set up and enabled from its window or menu bar icon.
+Macinto.sh.app must be set up and enabled from its window or menu bar icon;
+'macinto.sh setup' opens that window (starting the app if needed).
 If it isn't running, macinto.sh starts it and waits up to 10 seconds (turn this
 off with --no-launch). Until setup is finished, requests fail with code
 'setup'; while it is disabled every request except status, permissions,
@@ -67,6 +68,11 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug, PartialEq)]
 pub enum Command {
+    // ---- Setup
+    /// Open the Macinto.sh window (starting the app if needed) to finish setup or enable it
+    #[command(display_order = 0)]
+    Setup,
+
     // ---- Info
     /// Show whether Macinto.sh is enabled, time left, permissions, displays
     #[command(display_order = 1)]
@@ -105,9 +111,9 @@ pub enum Command {
     Key(KeyArgs),
 
     // ---- Apps
-    /// Running apps, and opening apps
-    #[command(display_order = 20, subcommand)]
-    App(AppCmd),
+    /// Running apps, and opening apps. With no subcommand: same as 'setup'
+    #[command(display_order = 20)]
+    App(AppGroup),
     /// List running apps (same as 'app list')
     #[command(display_order = 21)]
     Apps,
@@ -150,6 +156,12 @@ pub enum Command {
 pub enum ScreenCmd {
     /// List displays: index, origin and size in points, scale
     List,
+}
+
+#[derive(Args, Debug, PartialEq)]
+pub struct AppGroup {
+    #[command(subcommand)]
+    pub cmd: Option<AppCmd>,
 }
 
 #[derive(Subcommand, Debug, PartialEq)]
@@ -305,6 +317,7 @@ fn element(cmd: &str, a: &ElementArgs) -> Request {
 /// Map a parsed command to what it does. `Mcp` is handled by the caller.
 pub fn to_action(cmd: &Command) -> Result<Action> {
     Ok(match cmd {
+        Command::Setup | Command::App(AppGroup { cmd: None }) => Action::Setup,
         Command::Status => Action::Call(Request::new("status")),
         Command::Permissions => Action::Permissions,
         Command::Screen(ScreenCmd::List) => Action::Displays,
@@ -324,8 +337,10 @@ pub fn to_action(cmd: &Command) -> Result<Action> {
         Command::Scroll(s) => Action::Call(Request::new("scroll").arg("dx", s.dx).arg("dy", s.dy)),
         Command::Type(t) => Action::Call(Request::new("type").arg("text", t.text.join(" "))),
         Command::Key(k) => Action::Call(Request::new("key").arg("combos", json!(k.combos))),
-        Command::App(AppCmd::List) | Command::Apps => Action::Call(Request::new("apps")),
-        Command::App(AppCmd::Open(o)) | Command::Open(o) => Action::Call(Request::new("open").arg("app", o.app.as_str())),
+        Command::App(AppGroup { cmd: Some(AppCmd::List) }) | Command::Apps => Action::Call(Request::new("apps")),
+        Command::App(AppGroup { cmd: Some(AppCmd::Open(o)) }) | Command::Open(o) => {
+            Action::Call(Request::new("open").arg("app", o.app.as_str()))
+        }
         Command::Ui(u) => Action::Call(Request::new("ui").arg("app", u.app.as_deref()).arg("depth", u.depth)),
         Command::Press(e) => Action::Call(element("press", e)),
         Command::Focus(e) => Action::Call(element("focus", e)),
@@ -429,6 +444,23 @@ mod tests {
     fn app_shortcuts_match_group() {
         assert_eq!(req(&["apps"]), req(&["app", "list"]));
         assert_eq!(req(&["open", "Finder"]), req(&["app", "open", "Finder"]));
+    }
+
+    #[test]
+    fn setup_and_app_alias() {
+        for args in [&["setup"][..], &["app"], &["--dev", "setup"], &["app", "--no-launch"], &["--json", "setup"]] {
+            let cli = parse(args).unwrap();
+            assert_eq!(to_action(&cli.command).unwrap(), Action::Setup, "{args:?}");
+        }
+        assert!(parse(&["--dev", "--no-launch", "setup"]).unwrap().dev);
+        assert!(parse(&["setup", "--dev", "--no-launch"]).unwrap().no_launch);
+        // 'app' with a subcommand still means the app group.
+        assert_eq!(req(&["app", "list"]).cmd, "apps");
+        assert_eq!(req(&["app", "open", "Finder"]).cmd, "open");
+        assert!(parse(&["setup", "extra"]).is_err());
+        assert!(parse(&["app", "bogus"]).is_err());
+        let help = Cli::command().render_help().to_string();
+        assert!(help.contains("setup"), "{help}");
     }
 
     #[test]
