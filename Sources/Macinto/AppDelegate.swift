@@ -28,7 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return w.occlusionState.contains(.visible)
     }
 
-    private var controlWindow: NSPanel?
+    private var controlWindow: NSWindow?
 
     /// The same controls as the menu bar popover, in a small window. Used when the menu bar icon is
     /// hidden, and whenever Macinto.sh is opened again while running (`open -a Macinto.sh`).
@@ -41,17 +41,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if controlWindow == nil {
             let host = NSHostingController(rootView: makeMenuView(closeOnInstall: false))
             host.sizingOptions = .preferredContentSize
-            let p = NSPanel(contentViewController: host)
+            // A normal window, not a floating panel: it doesn't stay on top of other apps, and
+            // clicking it activates Macinto.sh so the main menu's shortcuts (⌘Q, ⌘W) work.
+            let p = NSWindow(contentViewController: host)
             p.title = Paths.displayName
-            p.styleMask = [.titled, .closable, .utilityWindow, .nonactivatingPanel, .fullSizeContentView]
+            p.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
             // Tokyo Night: always dark, title bar blends into the content.
             p.appearance = NSAppearance(named: .darkAqua)
             p.backgroundColor = TN.nsBg
             p.titlebarAppearsTransparent = true
             p.titleVisibility = .hidden
-            p.isFloatingPanel = true
-            p.becomesKeyOnlyIfNeeded = true
-            p.hidesOnDeactivate = false
             p.isReleasedWhenClosed = false
             p.center()
             controlWindow = p

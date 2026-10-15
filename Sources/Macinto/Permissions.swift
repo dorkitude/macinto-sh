@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import CoreGraphics
+import ScreenCaptureKit
 
 enum Permissions {
     enum Kind: String { case accessibility, screenRecording = "screen_recording" }
@@ -17,8 +18,13 @@ enum Permissions {
 
     static func promptScreenRecording() {
         ActionLog.shared.write(event: "setup: screen recording button clicked")
-        if !CGRequestScreenCaptureAccess() {
-            openSettings("Privacy_ScreenCapture")
+        // On current macOS, CGRequestScreenCaptureAccess alone doesn't reliably add the app to the
+        // Screen & System Audio Recording list; a real ScreenCaptureKit request does. Make one so the
+        // app shows up there (and macOS shows its prompt), then open the pane.
+        _ = CGRequestScreenCaptureAccess()
+        SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, error in
+            ActionLog.shared.write(event: "setup: ScreenCaptureKit registration request: \(error.map { "\($0.localizedDescription)" } ?? "ok")")
+            DispatchQueue.main.async { openSettings("Privacy_ScreenCapture") }
         }
     }
 
