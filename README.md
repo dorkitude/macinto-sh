@@ -20,22 +20,40 @@ brew install --cask dorkitude/tap/macinto-sh
 ```
 
 This installs `Macinto.sh.app` in `/Applications` and links `macinto.sh` into
-Homebrew's `bin` (on your `PATH`).
+Homebrew's `bin` (on your `PATH`). Then open the app and finish setup:
+
+```bash
+macinto.sh setup
+```
 
 Or download the DMG from
 [github.com/dorkitude/macinto-sh/releases/latest](https://github.com/dorkitude/macinto-sh/releases/latest),
-open it, and drag Macinto.sh to Applications. Then click **Install CLI** in the
-app (see below) to put `macinto.sh` on your `PATH`.
+open it, and drag Macinto.sh to Applications. Open it from Finder or with
+`open /Applications/Macinto.sh.app`, then click **Install CLI** in the app (see
+below) to put `macinto.sh` on your `PATH`.
+
+`open -a` with the app's name does not work: it reads the `.sh` as a file
+extension and reports that it can't find the application. Use
+`macinto.sh setup`, `open /Applications/Macinto.sh.app` or
+`open -b com.dorkitude.macinto.sh`.
 
 The app is signed with a Developer ID and notarized by Apple. The CLI is a
 single native binary inside the app bundle (`Contents/Helpers/macinto.sh`).
 
 ## First run
 
-1. Open Macinto.sh, or just run any `macinto.sh` command (or start the MCP
-   server). If the app isn't running, the CLI launches it and waits up to 10
-   seconds for it. Pass `--no-launch` (or set `MACINTO_NO_LAUNCH=1`) to get a
-   `not_running` error instead.
+1. Run `macinto.sh setup`. It starts Macinto.sh if it isn't running, then
+   brings its window to the front:
+
+   ```
+   $ macinto.sh setup
+   Macinto.sh is open (started it). Finish setup in its window (accessibility missing, screen recording missing, test capture not done), then enable it.
+   ```
+
+   Any other `macinto.sh` command (or the MCP server) also launches the app
+   when it isn't running, and waits up to 10 seconds for it. Pass
+   `--no-launch` (or set `MACINTO_NO_LAUNCH=1`) to get a `not_running` error
+   instead.
 2. Until setup is finished, the app shows a setup screen and every request
    except `status`, `permissions`, `screen list` and `keys` fails with code
    `setup`:
@@ -115,8 +133,8 @@ commands above.
 
 If your menu bar is full, macOS hides new menu bar icons without telling the
 app. When that happens Macinto.sh opens the control window on its own. It
-appears without taking keyboard focus. Run `open -a Macinto.sh` at any time
-to bring it back.
+appears without taking keyboard focus. Run `macinto.sh setup` at any time
+to bring it back (and focus it).
 
 ## Enabling, the timer, and the red apple
 
@@ -124,7 +142,7 @@ Macinto.sh starts **disabled** every time it launches. While disabled, every
 request except `status`, `permissions`, `screen list` and `keys` is refused:
 
 ```
-macinto.sh: Macinto.sh is disabled. Enable it from the Macinto.sh menu bar icon (or its control window: open -a 'Macinto.sh').
+macinto.sh: Macinto.sh is disabled. Enable it from the Macinto.sh menu bar icon, or open its window with: macinto.sh setup
 ```
 
 To enable it, pick a duration on the slider (5 min to 8 h, default 30 min) and
@@ -169,6 +187,7 @@ main one) are accepted.
 
 | Command | What it does |
 |---|---|
+| `setup` (or bare `app`) | Start Macinto.sh if needed and bring its window to the front, to finish setup or enable it. Not an MCP tool |
 | `status` | Enabled?, seconds remaining (or ∞), permissions, version, displays |
 | `permissions` | Which permissions are granted |
 | `screen list` | Displays: index, origin and size in points, scale |
@@ -400,7 +419,8 @@ configuration. It is a separate app as far as macOS is concerned:
 - signed with `macinto local signing` (or ad-hoc), never the Developer ID
 - its own socket (`macinto-dev.sock`) and log (`~/Library/Logs/macinto-dev.log`)
 
-Talk to it with `macinto.sh --dev ...`. Dev builds accept a launch argument
+Talk to it with `macinto.sh --dev ...`; `macinto.sh --dev setup` starts it and
+shows its window. Dev builds accept a launch argument
 that enables them for testing without clicking the menu:
 
 ```bash
@@ -420,7 +440,8 @@ enabled state are faked for the image):
 
 States: `onboarding-none`, `onboarding-ax`, `onboarding-relaunch`,
 `onboarding-both`, `tutorial`, `control`, `control-enabled`, `control-cli`
-(footer with the CLI already installed).
+(footer with the CLI already installed), `control-hidden` (menu bar icon hidden
+by macOS).
 
 Both are compiled out of release builds (`#if DEBUG`). Don't distribute dev
 builds.
