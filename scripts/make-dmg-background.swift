@@ -42,7 +42,7 @@ for scale in [1, 2] {
     // Caption under the icons.
     let style = NSMutableParagraphStyle()
     style.alignment = .center
-    let caption = NSAttributedString(string: "Drag Macinto to Applications to install", attributes: [
+    let caption = NSAttributedString(string: "Drag Macinto.sh to Applications to install", attributes: [
         .font: NSFont.systemFont(ofSize: 15, weight: .medium),
         .foregroundColor: NSColor(white: 0.35, alpha: 1),
         .paragraphStyle: style,
