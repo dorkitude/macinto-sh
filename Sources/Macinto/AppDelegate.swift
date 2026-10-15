@@ -53,9 +53,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             p.titleVisibility = .hidden
             p.isReleasedWhenClosed = false
             p.center()
+            // Closing the window drops back to a menu-bar-only app (no Dock icon, not in ⌘Tab).
+            NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: p, queue: .main) { _ in
+                MainActor.assumeIsolated { _ = NSApp.setActivationPolicy(.accessory) }
+            }
             controlWindow = p
         }
         guard let p = controlWindow else { return }
+        // While the window is open, Macinto.sh is a regular app: it has a Dock icon and shows up in
+        // ⌘Tab, so it can be found again after other windows cover it. This doesn't activate it.
+        if NSApp.activationPolicy() != .regular { _ = NSApp.setActivationPolicy(.regular) }
         if explicit {
             NSApp.activate()
             p.orderFrontRegardless()
