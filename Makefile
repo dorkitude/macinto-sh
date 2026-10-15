@@ -1,7 +1,7 @@
 # Macinto.sh build.
 #   make app       -> build/Macinto.sh.app (universal, release; includes the Rust CLI)
 #   make dmg       -> build/Macinto.sh-<version>.dmg
-#   make test      -> cargo test + clippy + swift build
+#   make test      -> cargo test + clippy + swift build + swift test
 #   make notarize  -> notarize + staple the app, rebuild the DMG around it, notarize + staple the DMG
 VERSION    := $(shell cat VERSION)
 APP_NAME   := Macinto.sh
@@ -130,6 +130,7 @@ test:
 	cd cli && $(CARGO) test --locked
 	cd cli && PATH="$(dir $(shell rustup which --toolchain $(RUSTUP_TC) cargo)):$$PATH" $(CARGO) clippy --locked --all-targets -- -D warnings
 	swift build
+	swift test
 
 # Needs a Developer ID identity and a notarytool profile:
 #   xcrun notarytool store-credentials macinto-notary ...
