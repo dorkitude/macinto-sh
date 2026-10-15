@@ -139,7 +139,8 @@ final class AppState: ObservableObject {
     enum Preview: String, CaseIterable {
         case onboardingNone = "onboarding-none", onboardingAX = "onboarding-ax",
              onboardingRelaunch = "onboarding-relaunch", onboardingBoth = "onboarding-both",
-             tutorial, control, controlEnabled = "control-enabled", controlCLI = "control-cli"
+             tutorial, control, controlEnabled = "control-enabled", controlCLI = "control-cli",
+             controlHidden = "control-hidden"
     }
     private(set) var preview: Preview?
     /// True in preview mode: every button that would change anything real is a no-op.
@@ -158,7 +159,7 @@ final class AppState: ObservableObject {
         switch p {
         case .onboardingNone, .onboardingAX, .onboardingRelaunch, .onboardingBoth: screen = .onboarding
         case .tutorial: screen = .tutorial
-        case .control, .controlEnabled, .controlCLI: screen = .control
+        case .control, .controlEnabled, .controlCLI, .controlHidden: screen = .control
         }
         cliInstalledPath = p == .controlCLI ? "/opt/homebrew/bin/macinto.sh" : nil
         if p == .controlEnabled {

@@ -215,7 +215,7 @@ struct ControlView: View {
             appleSetting
             recent
             if statusItemHidden() {
-                Text("Menu bar icon hidden by macOS (menu bar full). `open -a '\(Paths.uiName)'` reopens this window.")
+                Text("Menu bar icon hidden by macOS (menu bar full). `\(Paths.uiSetupCommand)` reopens this window.")
                     .font(.system(size: 10)).foregroundStyle(TN.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }

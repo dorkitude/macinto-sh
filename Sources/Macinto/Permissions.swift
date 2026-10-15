@@ -50,7 +50,7 @@ enum Permissions {
     }
 
     static let accessibilityError =
-        "Accessibility permission is missing. Grant it in System Settings > Privacy & Security > Accessibility (enable Macinto.sh), or open Macinto.sh and use its setup screen."
+        "Accessibility permission is missing. Grant it in System Settings > Privacy & Security > Accessibility (enable Macinto.sh), or run `macinto.sh setup` and use its setup screen."
     static let screenRecordingError =
         "Screen Recording permission is missing. Grant it in System Settings > Privacy & Security > Screen & System Audio Recording (enable Macinto.sh), then relaunch Macinto.sh."
 }

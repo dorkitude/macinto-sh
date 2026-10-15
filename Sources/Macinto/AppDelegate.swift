@@ -31,8 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controlWindow: NSWindow?
 
     /// The single control window. Opened by clicking the menu bar icon, the overlay apple, the Dock
-    /// icon, or `open -a Macinto.sh` while running (all `explicit`), and on its own when setup is
-    /// needed at launch or macOS hides the menu bar icon.
+    /// icon, `macinto.sh setup` (socket command `show_window`), or opening the app again while it
+    /// runs (`open /Applications/Macinto.sh.app`, the reopen event) (all `explicit`), and on its
+    /// own when setup is needed at launch or macOS hides the menu bar icon.
     ///
     /// `explicit` is false when the window appears on its own: it is then ordered front without
     /// activating the app or becoming key, so it never takes keyboard focus from whatever the user
@@ -67,8 +68,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if NSApp.activationPolicy() != .regular { _ = NSApp.setActivationPolicy(.regular) }
         if explicit {
             state.refreshPermissions()
-            NSApp.activate()
+            // Since macOS 14, activate() is cooperative: it is ignored unless the active app yields,
+            // which a socket request (`macinto.sh setup`) can't arrange. A person asked for this
+            // window, so activate regardless, and order it front even if activation is refused.
+            (NSApp as LegacyActivation).activate(ignoringOtherApps: true)
             p.makeKeyAndOrderFront(nil)
+            p.orderFrontRegardless()
         } else {
             p.orderFrontRegardless()
         }
@@ -228,3 +233,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showControlWindow(explicit: true)
     }
 }
+
+/// `NSApplication.activate(ignoringOtherApps:)` is deprecated (macOS 14) but still the only call that
+/// activates without the active app's cooperation. Calling it through a protocol avoids the warning.
+@MainActor
+private protocol LegacyActivation {
+    func activate(ignoringOtherApps flag: Bool)
+}
+extension NSApplication: LegacyActivation {}

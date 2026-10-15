@@ -18,9 +18,11 @@ enum Snapshot {
         NSApplication.shared.setActivationPolicy(.prohibited)
         PulsingApple.animates = false
         Paths.uiName = "Macinto.sh"
+        Paths.uiSetupCommand = "macinto.sh setup"
         let state = AppState.shared
         state.startPreview(preview)
-        let view = MenuView(state: state, installCLI: {}, openLog: {}, relaunch: {}, quit: {})
+        let view = MenuView(state: state, statusItemHidden: { preview == .controlHidden },
+                            installCLI: {}, openLog: {}, relaunch: {}, quit: {})
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
         guard let cg = renderer.cgImage else {

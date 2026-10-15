@@ -2,7 +2,8 @@ import AppKit
 
 enum Commands {
     /// Commands that work while disabled (read-only, no screen or input access).
-    static let allowedWhileDisabled: Set<String> = ["status", "version", "ping", "keys"]
+    /// `show_window` is allowed too: it only shows the control window and never enables anything.
+    static let allowedWhileDisabled: Set<String> = ["status", "version", "ping", "keys", "show_window"]
 
     static func handle(_ request: Request, _ peer: PeerInfo) async -> Response {
         let args = Args(request.args)
@@ -10,7 +11,7 @@ enum Commands {
         // `type` text is logged truncated (see README).
         let logged = ([request.cmd] + (args.raw.isEmpty ? [] : [args.logDescription])).joined(separator: " ")
         ActionLog.shared.write(pid: peer.pid, chain: peer.chainDescription, command: logged, result: response.summary)
-        if !["status", "ping", "version", "keys"].contains(request.cmd) {
+        if !["status", "ping", "version", "keys", "show_window"].contains(request.cmd) {
             let caller = peer.caller
             await MainActor.run {
                 AppState.shared.record(ActionRecord(time: Date(), caller: caller.name, pid: caller.pid,
@@ -29,7 +30,7 @@ enum Commands {
             return .error("Finish setup in the \(Paths.displayName) window (permissions), then enable it.", code: "setup")
         }
         if !enabled && !allowedWhileDisabled.contains(command) {
-            return .error("\(Paths.displayName) is disabled. Enable it from the \(Paths.displayName) menu bar icon (or its control window: open -a '\(Paths.displayName)').",
+            return .error("\(Paths.displayName) is disabled. Enable it from the \(Paths.displayName) menu bar icon, or open its window with: \(Paths.setupCommand)",
                           code: "disabled")
         }
         do {
@@ -63,6 +64,9 @@ enum Commands {
 
         case "status":
             return await status()
+
+        case "show_window":
+            return await showWindow()
 
         case "click":
             let p = try a.point()
@@ -157,6 +161,22 @@ enum Commands {
         default:
             throw CommandError(code: "bad_request", message: "unknown command '\(command)' (is the CLI newer than the app?)")
         }
+    }
+
+    /// `macinto.sh setup`: bring the control window to the front and focus it. A person asked for
+    /// it, so the app may activate (same as clicking the menu bar icon). Never enables anything.
+    @MainActor
+    static func showWindow() -> JSON {
+        AppDelegate.current?.showControlWindow(explicit: true)
+        let s = AppState.shared
+        return [
+            "shown": .bool(AppDelegate.current != nil),
+            "name": .string(Paths.displayName),
+            "state": .string(s.stateName),
+            "setup": s.setupJSON,
+            "enabled": .bool(s.enabled),
+            "remaining_seconds": s.remainingSeconds.map { .int($0) } ?? .null,
+        ]
     }
 
     @MainActor
