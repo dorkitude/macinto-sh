@@ -1,6 +1,6 @@
 [package]
 name = "macinto-cli"
-version = "0.1.101"
+version = "0.1.102"
 edition = "2021"
 description = "Command line client and MCP server for Macinto.sh.app"
 license = "MIT"
