@@ -212,6 +212,7 @@ struct ControlView: View {
         VStack(alignment: .leading, spacing: 10) {
             status
             duration
+            appleSetting
             recent
             if statusItemHidden() {
                 Text("Menu bar icon hidden by macOS (menu bar full). `open -a '\(Paths.uiName)'` reopens this window.")
@@ -283,6 +284,28 @@ struct ControlView: View {
             if state.enabled {
                 Button("Restart timer with \(durationLabel)") { state.enable(for: state.selectedDuration) }
                     .buttonStyle(OutlineButtonStyle(color: TN.blue, small: true))
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var appleSetting: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Toggle(isOn: $state.showOverlay) {
+                Text("Show the red apple while enabled").font(.system(size: 12)).foregroundStyle(TN.text)
+            }
+            .toggleStyle(.switch)
+            .tint(TN.red)
+            .controlSize(.small)
+            if !state.showOverlay {
+                if statusItemHidden() {
+                    Text("Your menu bar icon is hidden by macOS, so nothing on screen will show that Macinto.sh is on.")
+                        .font(.system(size: 10)).foregroundStyle(TN.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("Only the menu bar 🍎 shows when Macinto.sh is on.")
+                        .font(.system(size: 10)).foregroundStyle(TN.muted)
+                }
             }
         }
         .padding(.horizontal, 4)

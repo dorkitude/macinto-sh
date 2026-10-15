@@ -143,6 +143,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         state.onEnabledChange = { [weak self] enabled in self?.enabledChanged(enabled) }
         overlay.onClick = { [weak self] in self?.showControlWindow(explicit: true) }
+        state.onOverlayPreferenceChange = { [weak self] in
+            guard let self else { return }
+            if self.state.enabled && self.state.showOverlay { self.overlay.show() } else { self.overlay.hide() }
+        }
         state.onPermissionsLost = { [weak self] in self?.permissionsLost() }
         updateIcon()
 
@@ -198,7 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func enabledChanged(_ enabled: Bool) {
         updateIcon()
         if enabled {
-            overlay.show()
+            if state.showOverlay { overlay.show() }
         } else {
             overlay.hide()
             if Recorder.shared.isRecording {

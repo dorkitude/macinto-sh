@@ -74,6 +74,17 @@ final class AppState: ObservableObject {
     /// Pending switch from onboarding (both checkmarks shown) to the next screen.
     private var advanceWork: DispatchWorkItem?
 
+    /// Show the flashing apple in the top-right corner while enabled. On by default; can be turned
+    /// off from the controls if it gets in the way (the menu bar icon still shows the state).
+    @Published var showOverlay = UserDefaults.standard.object(forKey: "showOverlay") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(showOverlay, forKey: "showOverlay")
+            ActionLog.shared.write(event: "red apple overlay \(showOverlay ? "on" : "off")")
+            onOverlayPreferenceChange?()
+        }
+    }
+    var onOverlayPreferenceChange: (() -> Void)?
+
     /// The one-time setup capture (see Capture.setupTestCapture) has run on this Mac.
     @Published private(set) var directCaptureChecked = UserDefaults.standard.bool(forKey: "directCaptureChecked") {
         didSet { UserDefaults.standard.set(directCaptureChecked, forKey: "directCaptureChecked") }
