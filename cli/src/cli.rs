@@ -13,9 +13,12 @@ const ABOUT: &str = "Drive this Mac through Macinto.sh.app: click, type, read th
 const LONG_ABOUT: &str = "\
 Drive this Mac through Macinto.sh.app: click, type, read the UI tree, take screenshots.
 
-Macinto.sh.app must be running and enabled from its menu bar icon. While it is
-disabled every request except status, permissions, screen list and keys is
-refused. There is no command to enable it.
+Macinto.sh.app must be set up and enabled from its window or menu bar icon.
+If it isn't running, macinto.sh starts it and waits up to 10 seconds (turn this
+off with --no-launch). Until setup is finished, requests fail with code
+'setup'; while it is disabled every request except status, permissions,
+screen list and keys fails with code 'disabled'. There is no command to enable
+it.
 
 Coordinates are global points with the origin at the top-left of the main
 display. Screenshots are scaled to points by default, so a pixel at (x, y) in a
@@ -23,7 +26,9 @@ screenshot of display 0 is clicked with `macinto.sh click x y`.";
 
 const AFTER_HELP: &str = "\
 Exit codes: 0 ok, 1 error, 2 usage error.
-Environment: MACINTO_SOCKET overrides the socket path.
+Environment: MACINTO_SOCKET overrides the socket path (no auto-launch for other
+sockets), MACINTO_NO_LAUNCH=1 is --no-launch, MACINTO_APP=/path/to/App.app picks
+the app to launch.
 Run 'macinto.sh <command> --help' for details on one command.";
 
 #[derive(Parser, Debug)]
@@ -51,6 +56,10 @@ pub struct Cli {
     /// Talk to the dev build, "Macinto.sh (Dev).app" (socket macinto-dev.sock)
     #[arg(long, global = true, conflicts_with = "socket")]
     pub dev: bool,
+
+    /// Don't start Macinto.sh.app when it isn't running; fail with not_running instead
+    #[arg(long, global = true, env = "MACINTO_NO_LAUNCH", value_parser = clap::builder::BoolishValueParser::new(), hide_env_values = true)]
+    pub no_launch: bool,
 
     #[command(subcommand)]
     pub command: Command,
@@ -476,6 +485,20 @@ mod tests {
         assert!(parse(&["--dev", "status"]).unwrap().dev);
         assert!(parse(&["status", "--dev"]).unwrap().dev);
         assert!(!parse(&["status"]).unwrap().dev);
+    }
+
+    #[test]
+    fn no_launch_flag_and_env() {
+        assert!(parse(&["--no-launch", "status"]).unwrap().no_launch);
+        assert!(parse(&["apps", "--no-launch", "--dev"]).unwrap().no_launch);
+        // The only test that touches MACINTO_NO_LAUNCH.
+        std::env::remove_var("MACINTO_NO_LAUNCH");
+        assert!(!parse(&["status"]).unwrap().no_launch);
+        for (val, want) in [("1", true), ("true", true), ("yes", true), ("0", false), ("false", false)] {
+            std::env::set_var("MACINTO_NO_LAUNCH", val);
+            assert_eq!(parse(&["status"]).unwrap().no_launch, want, "MACINTO_NO_LAUNCH={val}");
+        }
+        std::env::remove_var("MACINTO_NO_LAUNCH");
     }
 
     #[test]

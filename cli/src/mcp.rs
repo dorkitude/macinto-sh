@@ -19,8 +19,9 @@ pub const PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26
 
 const INSTRUCTIONS: &str = "\
 Macinto.sh drives this Mac (mouse, keyboard, accessibility tree, screenshots) through the \
-Macinto.sh menu bar app. A person must enable it from the menu bar; while disabled every tool \
-except status and keys fails with a 'disabled' error, and no tool can enable it. Coordinates are \
+Macinto.sh menu bar app, which is started automatically if it isn't running. A person must finish \
+setup (permissions) and enable it in the app's window; until then every tool except status and keys \
+fails with a 'setup' or 'disabled' error, and no tool can enable it. Coordinates are \
 global points with the origin at the top-left of the main display. A typical loop: screenshot or ui \
 to observe, then click/type/key/press to act, then observe again.";
 

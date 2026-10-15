@@ -85,6 +85,27 @@ pub fn element_line(e: &Value, indent: bool) -> String {
     parts.join(" ")
 }
 
+/// `complete`, or what's left: `incomplete (accessibility missing, test capture not done)`.
+fn setup_line(setup: &Value) -> String {
+    if setup["complete"].as_bool() == Some(true) {
+        return "complete".into();
+    }
+    let mut left = Vec::new();
+    if setup["accessibility"].as_bool() == Some(false) {
+        left.push("accessibility missing");
+    }
+    if setup["screen_recording"].as_bool() == Some(false) {
+        left.push("screen recording missing");
+    }
+    if setup["test_capture"].as_bool() == Some(false) {
+        left.push("test capture not done");
+    }
+    if left.is_empty() {
+        left.push("finish it in the Macinto.sh window");
+    }
+    format!("incomplete ({})", left.join(", "))
+}
+
 /// Text for a successful result. Empty string means print nothing.
 pub fn render(kind: &str, d: &Value) -> String {
     let mut out: Vec<String> = Vec::new();
@@ -97,10 +118,16 @@ pub fn render(kind: &str, d: &Value) -> String {
             } else {
                 num(&d["remaining_seconds"])
             };
+            if let Some(state) = d["state"].as_str() {
+                out.push(format!("state: {}", if state == "setup" { "setup needed" } else { state }));
+            }
             out.push(format!("enabled: {}", if d["enabled"].as_bool() == Some(true) { "yes" } else { "no" }));
             out.push(format!("remaining: {remaining}"));
             out.push(format!("accessibility: {}", granted(&d["permissions"]["accessibility"])));
             out.push(format!("screen_recording: {}", granted(&d["permissions"]["screen_recording"])));
+            if d["setup"].is_object() {
+                out.push(format!("setup: {}", setup_line(&d["setup"])));
+            }
             out.push(format!("version: {}", s(d, "version")));
             out.push(format!("recording: {}", if d["recording"].as_bool() == Some(true) { "yes" } else { "no" }));
             if let Some(si) = d["status_item"].as_str() {
@@ -215,5 +242,18 @@ mod tests {
         assert!(t.contains("remaining: ∞"));
         assert!(t.contains("accessibility: missing"));
         assert!(t.contains("screen_recording: granted"));
+    }
+
+    #[test]
+    fn status_setup_state() {
+        let d = json!({"state": "setup", "enabled": false,
+                       "setup": {"complete": false, "accessibility": false, "screen_recording": true, "test_capture": false},
+                       "permissions": {"accessibility": false, "screen_recording": true}, "version": "0.1.101"});
+        let t = render("status", &d);
+        assert!(t.starts_with("state: setup needed\n"), "{t}");
+        assert!(t.contains("setup: incomplete (accessibility missing, test capture not done)"), "{t}");
+        let done = json!({"state": "disabled", "setup": {"complete": true}});
+        let t = render("status", &done);
+        assert!(t.contains("state: disabled") && t.contains("setup: complete"), "{t}");
     }
 }

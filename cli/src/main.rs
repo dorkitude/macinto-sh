@@ -5,6 +5,7 @@ mod actions;
 mod cli;
 mod client;
 mod files;
+mod launch;
 mod mcp;
 mod output;
 mod protocol;
@@ -41,7 +42,8 @@ fn main() -> ExitCode {
         }
     };
 
-    let client = Client::new(parsed.socket.clone().or_else(|| parsed.dev.then(client::dev_socket)));
+    let app_override = std::env::var_os("MACINTO_APP").filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
+    let client = Client::for_cli(parsed.socket.clone(), parsed.dev, parsed.no_launch, app_override);
     if parsed.command == cli::Command::Mcp {
         return ExitCode::from(mcp::serve(&client) as u8);
     }
