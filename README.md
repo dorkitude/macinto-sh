@@ -19,8 +19,8 @@ terminal, or from Codex/Claude/etc, you have to enable `Accessibility` and
 "hack me" permissions to a nondeterministic executor, _permanently_.  Like an opt-in
 [Back Orifice](https://en.wikipedia.org/wiki/Back_Orifice).  And that didn't feel very safe to me.
 
-So I made `macinto.sh` to have a more secure way to not have the aesthetic experience
-of using GUIs.
+So basically I made `macinto.sh` to have a more secure way to not have the aesthetic experience
+of using GUIs.  Maybe it'll be useful in some other ways to some other people too :)
 
 ## How it works
 
