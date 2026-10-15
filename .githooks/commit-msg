@@ -1,0 +1,7 @@
+#!/bin/sh
+# Reject AI attribution in commit messages (Co-Authored-By trailers for AI tools,
+# "Generated with ..." footers). Enable once per clone: git config core.hooksPath .githooks
+if grep -qiE '^(co-authored-by:.*(claude|anthropic|openai|chatgpt|codex|copilot|gemini|cursor|noreply@anthropic)|.*generated with \[?(claude|codex|chatgpt|copilot|cursor|gemini))' "$1"; then
+    echo "commit-msg: remove the AI attribution line from the commit message." >&2
+    exit 1
+fi

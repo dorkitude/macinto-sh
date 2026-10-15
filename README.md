@@ -361,6 +361,17 @@ States: `onboarding-none`, `onboarding-ax`, `onboarding-relaunch`,
 Both are compiled out of release builds (`#if DEBUG`). Don't distribute dev
 builds.
 
+## Contributing
+
+Enable the repo's hooks once per clone:
+
+```
+git config core.hooksPath .githooks
+```
+
+`commit-msg` rejects AI attribution lines (`Co-Authored-By:` an AI tool, "Generated with ..."
+footers). Commits are authored by the people who make them.
+
 ## Layout
 
 ```
