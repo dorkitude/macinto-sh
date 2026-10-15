@@ -1,13 +1,13 @@
 # macinto.sh
 
-A computer use tunnel for macOS. `Macinto.app` is a menu bar app that holds the
-Accessibility and Screen Recording permissions. `macinto.sh` is a plain bash CLI
-that asks the app to click, type, press keys, read the UI tree, take screenshots
-and record the screen.
+A computer use tunnel for macOS. `Macinto.sh.app` is a menu bar app that holds
+the Accessibility and Screen Recording permissions. `macinto.sh` is a command
+line tool (and MCP server) that asks the app to click, type, press keys, read
+the UI tree, take screenshots and record the screen.
 
 Agents and scripts call `macinto.sh`; only the app needs to be trusted by macOS.
-The app does nothing until you enable it from the menu bar, and enabling is
-time-limited.
+The app does nothing until a person enables it from the menu bar, and enabling
+is time-limited.
 
 ```
 $ macinto.sh status
@@ -23,51 +23,61 @@ $ macinto.sh screenshot -o /tmp/screen.png
 /tmp/screen.png 1800x1169
 ```
 
-Requires macOS 15 or later.
+Requires macOS 15 or later. Universal (Apple silicon and Intel).
 
 ## Install
 
-1. Download `Macinto-<version>.dmg`, open it, and drag Macinto to Applications.
-2. Open Macinto. It is not notarized yet, so macOS blocks the first launch.
-   Go to System Settings > Privacy & Security, scroll down, and click
-   **Open Anyway** next to the Macinto message. (Or right-click the app >
-   Open.)
-3. Click the 🍎 in the menu bar and use the **Grant…** buttons:
+1. Download `Macinto.sh-<version>.dmg`, open it, and drag Macinto.sh to
+   Applications. The app is signed with a Developer ID and notarized by Apple.
+2. Open Macinto.sh. Click the 🍎 in the menu bar and use the **Grant…** buttons:
    - **Accessibility**: needed for `click`, `move`, `drag`, `scroll`, `type`,
-     `key`, `ui`, `press`, `focus`, `setvalue`.
+     `key`, `ui`, `press`, `focus`, `set-value`.
    - **Screen Recording**: needed for `screenshot` and `record`. macOS applies
-     this grant only after Macinto restarts, so quit and reopen it.
-4. Click **Install command line tool…** to link `macinto.sh` into
+     this grant only after the app restarts, so quit and reopen it.
+3. Click **Install command line tool…**. It symlinks `macinto.sh` into
    `/opt/homebrew/bin` (if it exists and is writable) or `/usr/local/bin`
-   (asks for an admin password).
+   (asks for an admin password). To do it by hand:
+
+   ```bash
+   ln -s /Applications/Macinto.sh.app/Contents/Helpers/macinto.sh /usr/local/bin/macinto.sh
+   ```
+
+The CLI is a single native binary inside the app bundle
+(`Contents/Helpers/macinto.sh`). There is no script or runtime to install.
 
 If your menu bar is full, macOS hides new menu bar icons without telling the
-app. When that happens Macinto opens a small window with the same controls.
-Run `open -a Macinto` at any time to bring that window back.
+app. When that happens Macinto.sh shows a small window with the same controls.
+It appears without taking keyboard focus. Run `open -a Macinto.sh` at any time
+to bring it back.
 
 ## Enabling, the timer, and the red apple
 
-Macinto starts **disabled** every time it launches. While disabled, every CLI
-request except `status` is refused:
+Macinto.sh starts **disabled** every time it launches. While disabled, every
+request except `status`, `permissions`, `screen list` and `keys` is refused:
 
 ```
-macinto.sh: macinto is disabled — enable it from the menu bar
+macinto.sh: Macinto.sh is disabled. Enable it from the Macinto.sh menu bar icon (or its control window: open -a 'Macinto.sh').
 ```
 
 To enable it, pick a duration on the slider (5 min to 8 h, default 30 min) and
-click **Enable**. When the timer runs out, Macinto disables itself and stops any
-recording in progress. The last notch on the slider is ∞, which stays on until
-you turn it off.
+click **Enable**. When the timer runs out, Macinto.sh disables itself and stops
+any recording in progress. The last notch on the slider is ∞, which stays on
+until you turn it off.
 
-There is no CLI command to enable Macinto. Turning it on needs a person at the
-menu.
+Enabling needs a person:
+
+- There is no CLI command, socket command or MCP tool that enables it.
+- The Enable button is not a default button. Return does nothing; it takes a
+  click (or Tab to the button, then Space).
+- The control window never takes keyboard focus when it appears on its own, so
+  keystrokes meant for another app can't land in it.
 
 While enabled:
 
 - The menu bar icon is a full-color 🍎. When disabled it is a dimmed, gray 🍎.
 - A big red apple flashes in the top-right corner of the main screen, just
   below the menu bar. It ignores the mouse, shows on every Space, and is left
-  out of Macinto's own screenshots and recordings.
+  out of Macinto.sh's own screenshots and recordings.
 
 The menu also shows the time remaining, the last 10 requests (time, calling
 process and pid, command), and whether each permission is granted.
@@ -75,41 +85,60 @@ process and pid, command), and whether each permission is granted.
 ## CLI reference
 
 ```
-macinto.sh <command> [args]
+macinto.sh [--json] [--dev] [--socket PATH] <command> [args]
 ```
 
 Coordinates are global points with the origin at the top-left of the main
 display (the CGEvent convention). Screenshots are scaled to points by default,
 so a pixel at (x, y) in a screenshot of display 0 is clicked with
-`macinto.sh click x y`.
+`macinto.sh click x y`. Negative coordinates (displays left of or above the
+main one) are accepted.
 
 | Command | What it does |
 |---|---|
-| `status` | Enabled?, seconds remaining (or ∞), permissions, version, displays (origin and size in points) |
-| `apps` | Running apps: `*` marks the frontmost; pid, bundle id, name |
+| `status` | Enabled?, seconds remaining (or ∞), permissions, version, displays |
+| `permissions` | Which permissions are granted |
+| `screen list` | Displays: index, origin and size in points, scale |
 | `location` | Current mouse position |
+| `keys` | List key names accepted by `key` |
 | `click X Y [--right] [--double]` | Click at a point |
 | `move X Y` | Move the pointer |
 | `drag X1 Y1 X2 Y2` | Left-button drag |
 | `scroll DX DY` | Scroll by lines; positive DY scrolls up, negative scrolls down |
-| `type TEXT` | Type any Unicode text. Newlines press Return, tabs press Tab |
-| `key COMBO [COMBO ...]` | Key presses such as `cmd+shift+g`, `return`, `escape`, `tab`, `f5`, `left`, `cmd+plus` |
-| `keys` | List accepted key names |
-| `open APP` | Activate an app by name, bundle id or path, launching it if needed |
-| `ui [--app NAME] [--depth N]` | Dump the accessibility tree of the app's focused window (default: frontmost app) |
-| `press ID [--app NAME]` | Perform AXPress on an element |
-| `focus ID [--app NAME]` | Focus an element |
-| `setvalue ID TEXT [--app NAME]` | Set an element's value (e.g. a text field) |
-| `screenshot [-o FILE] [--force] [--display N] [--app NAME] [--native]` | PNG of a display. Default file `./macinto-YYYYmmdd-HHMMSS.png`. `--app` keeps only that app's windows. `--native` keeps full Retina resolution |
+| `type TEXT...` | Type any Unicode text. Newlines press Return, tabs press Tab |
+| `key COMBO...` (alias `hotkey`) | Key presses such as `cmd+shift+g`, `return`, `escape`, `tab`, `f5`, `left`, `cmd+plus` |
+| `app list`, `apps` | Running apps: `*` marks the frontmost; pid, bundle id, name |
+| `app open APP`, `open APP` | Activate an app by name, bundle id or path, launching it if needed |
+| `ui [--app APP] [--depth N]` | Dump the accessibility tree of the app's focused window (default: frontmost app) |
+| `press ID [--app APP]` | Perform AXPress on an element |
+| `focus ID [--app APP]` | Focus an element |
+| `set-value ID VALUE [--app APP]` (alias `setvalue`) | Set an element's value (e.g. a text field) |
+| `screenshot [-o FILE] [--force] [--display N] [--app APP] [--native] [--max-width PX]` | PNG of a display. Default file `./macinto-YYYYmmdd-HHMMSS.png` |
 | `record start [-o FILE.mov] [--force] [--display N]` | Start a screen recording |
 | `record stop` | Stop and move the movie to the `-o` path |
 | `record status` | Is a recording running? |
 | `wait SECONDS` | Sleep (runs in the CLI) |
-| `help`, `--version` | |
+| `mcp` | Run the MCP server on stdin/stdout |
+
+`macinto.sh --help` and `macinto.sh <command> --help` print full usage.
+
+Output files are never overwritten unless you pass `--force`.
 
 Exit codes: `0` ok, `1` error, `2` usage error.
 
-Output files are never overwritten unless you pass `--force`.
+### JSON output
+
+`--json` prints one JSON object per command, for scripts:
+
+```
+$ macinto.sh --json location
+{"data":{"x":689.5,"y":430.08},"ok":true}
+$ macinto.sh --json click 10 10
+{"code":"permission","error":"Accessibility permission is missing. ...","ok":false,"permission":"accessibility"}
+```
+
+Error codes: `usage`, `not_running`, `disabled`, `permission`, `not_found`,
+`failed`.
 
 ### UI tree
 
@@ -136,7 +165,7 @@ UI changes between `ui` and `press`, run `ui` again.
 # Open Spotlight, launch Calculator, compute something
 macinto.sh key cmd+space
 macinto.sh wait 0.5
-macinto.sh type "Calculator"
+macinto.sh type Calculator
 macinto.sh key return
 macinto.sh wait 1
 macinto.sh type "12*34="
@@ -150,84 +179,155 @@ macinto.sh wait 10
 macinto.sh record stop
 ```
 
+## MCP
+
+`macinto.sh mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
+server on stdin/stdout. Every CLI command is a tool: `status`, `click`, `move`,
+`drag`, `scroll`, `type`, `key`, `keys`, `open`, `apps`, `location`, `ui`,
+`press`, `focus`, `set_value`, `screenshot`, `record_start`, `record_stop`,
+`record_status`, `wait`.
+
+Tool calls go through the same socket as the CLI, so the enabled gate,
+permission checks and request log all apply. Errors come back as tool results
+with `isError: true` and the same message the CLI prints. `screenshot` returns
+the PNG inline (use `max_width` to get a smaller image) plus a text line with
+the file path and size.
+
+Claude Code:
+
+```bash
+claude mcp add macinto -- macinto.sh mcp
+```
+
+Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "macinto": {
+      "command": "/usr/local/bin/macinto.sh",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Codex (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.macinto]
+command = "macinto.sh"
+args = ["mcp"]
+```
+
+Use the full path (`/opt/homebrew/bin/macinto.sh` or `/usr/local/bin/macinto.sh`)
+if the client doesn't inherit your shell's `PATH`.
+
+MCP requests show up in the log as `macinto.sh mcp[pid] <- <client process>`.
+
 ## Security model
 
 - The CLI talks to the app over a Unix socket at
   `~/Library/Application Support/macinto/macinto.sock`. The directory is mode
   0700 and the socket is mode 0600, so only your user can connect. The app also
   checks the peer's uid on every connection.
-- **Anything running as your user can drive this Mac while Macinto is
+- **Anything running as your user can drive this Mac while Macinto.sh is
   enabled.** That includes scripts, agents and anything else on your account.
   This is why enabling needs a click at the menu, expires on a timer, and shows
   a flashing apple for as long as it lasts.
 - Every request is appended to `~/Library/Logs/macinto.log` (mode 0600) with a
   timestamp, the caller's pid and process chain as reported by the kernel
-  (`LOCAL_PEERPID`, e.g. `nc[812] <- macinto.sh[810] <- claude[700]`), the
-  command (arguments truncated to 80 characters), and the result. Text sent
-  with `type` appears in the log, truncated, so avoid typing secrets through
-  macinto.
+  (`LOCAL_PEERPID`, e.g. `macinto.sh[810] <- zsh[805] <- claude[700]`), the
+  command and arguments (each truncated to 80 characters), and the result. Text
+  sent with `type` appears in the log, truncated, so avoid typing secrets
+  through macinto.
 - Screenshots and recordings are written to
   `~/Library/Application Support/macinto/captures/`, then the CLI moves them to
   their destination. This way the app never writes into your folders, and
   doesn't trigger extra macOS folder-access prompts.
-- macOS ties the privacy grants to the app's code signature. Rebuilding with a
-  different signature makes macOS forget them; see Signing below.
+- macOS ties the privacy grants to the app's code signature and bundle id. Dev
+  builds use a different bundle id and certificate, so they never share the
+  release app's grants (see Dev builds).
 
 ## Wire protocol
 
-One request per connection, which keeps it usable from bash with the built-in
-`nc -U`:
+Newline-delimited JSON, one request per connection:
 
 ```
-request:  <command> <base64 arg> <base64 arg> ...\n     ("-" is an empty argument)
-response: ok\n<payload lines>   or   error <message>\n
+request:  {"cmd": "click", "args": {"x": 10, "y": 20}}
+response: {"ok": true, "data": {...}}
+          {"ok": false, "code": "disabled", "error": "..."}
 ```
 
 ```bash
-printf 'status\n' | nc -U ~/Library/Application\ Support/macinto/macinto.sock
-printf 'type %s\n' "$(printf 'hi' | base64)" | nc -U ~/Library/Application\ Support/macinto/macinto.sock
+printf '{"cmd":"status"}\n' | nc -U ~/Library/Application\ Support/macinto/macinto.sock
 ```
 
 ## Build from source
 
-Requires Xcode 16 or later (Swift 6) and macOS 15 or later. No Xcode project;
-SwiftPM builds the binary and the Makefile assembles the bundle.
+Requires Xcode 16 or later (Swift 6), Rust via rustup, and `uv` (for the DMG).
+There is no Xcode project: SwiftPM builds the app binary, Cargo builds the CLI
+(`cli/`), and the Makefile assembles and signs the bundle.
 
 ```bash
-make cert       # once: create a self-signed "macinto local signing" certificate
-make app        # build/Macinto.app (universal, release)
-make dmg        # build/Macinto-<version>.dmg
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+make app        # build/Macinto.sh.app (universal, release)
+make dmg        # build/Macinto.sh-<version>.dmg
+make test       # cargo test, clippy, swift build
 make run        # build and open
 ```
 
-The version lives in `VERSION`.
+The version lives in `VERSION` and is shared by the app and the CLI.
 
 ### Signing
 
-macOS keeps Accessibility and Screen Recording grants per code signature.
-An ad-hoc signature (`-`) changes on every build, so macOS forgets the grants
-after each rebuild. `make cert` creates a self-signed code signing certificate
-in your login keychain. Builds signed with it keep the same designated
-requirement, so grants survive rebuilds. `spctl` still rejects it, because it
-is not a Developer ID.
+Release builds are signed by the Developer ID "Developer ID Application: Jon K
+Wild (27NPB9Y222)", with the hardened runtime and a secure timestamp on both
+the nested CLI and the app. No entitlements are needed.
 
-`SIGN_IDENTITY` picks the identity. The default is `macinto local signing` if it
-exists, otherwise ad-hoc:
+`SIGN_IDENTITY` picks the identity. The default is the first of:
+
+1. a `Developer ID Application: ...` identity in your keychain
+2. `macinto local signing`, a self-signed certificate made by `make cert`
+3. ad-hoc (`-`)
+
+If you're building a fork without a Developer ID, run `make cert` once. Builds
+signed with that certificate keep the same designated requirement, so macOS
+keeps the Accessibility and Screen Recording grants across rebuilds (an ad-hoc
+signature changes every build, and macOS forgets the grants). Gatekeeper
+rejects locally signed builds on other Macs.
 
 ```bash
-make app SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
 make dmg SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
-make notarize SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"   # needs a 'macinto-notary' notarytool profile
 ```
+
+### Notarizing
+
+```bash
+xcrun notarytool store-credentials macinto-notary ...   # once
+make notarize
+```
+
+`make notarize` builds the app, notarizes and staples it, rebuilds the DMG
+around the stapled app, then signs, notarizes and staples the DMG. Both carry
+their own ticket, so the app passes Gatekeeper offline even after it has been
+copied out of the DMG.
 
 ### Dev builds
 
-`make dev-app` builds `build/debug/Macinto.app` in the debug configuration. Dev
-builds only accept a launch argument that enables Macinto for testing without
-clicking the menu:
+`make dev-app` builds `build/debug/Macinto.sh (Dev).app` in the debug
+configuration. It is a separate app as far as macOS is concerned:
+
+- bundle id `sh.macinto.app.dev`, named "Macinto.sh (Dev)"
+- signed with `macinto local signing` (or ad-hoc), never the Developer ID
+- its own socket (`macinto-dev.sock`) and log (`~/Library/Logs/macinto-dev.log`)
+
+Talk to it with `macinto.sh --dev ...`. Dev builds accept a launch argument
+that enables them for testing without clicking the menu:
 
 ```bash
-open build/debug/Macinto.app --args --enable-for-testing 60   # seconds, max 3600
+open -g "build/debug/Macinto.sh (Dev).app" --args --enable-for-testing 60   # seconds, max 3600
+macinto.sh --dev status
 ```
 
 This code is compiled out of release builds (`#if DEBUG`). Don't distribute
@@ -236,10 +336,10 @@ dev builds.
 ## Layout
 
 ```
-macinto.sh               CLI (also bundled in Macinto.app/Contents/Resources)
+cli/                     macinto.sh: Rust CLI and MCP server (Cargo binary macinto_sh)
 Sources/Macinto/         app: socket server, commands, input, AX tree, capture, menu, overlay
 Resources/Info.plist     bundle Info.plist template
-scripts/                 icon renderer, signing certificate helper
+scripts/                 icon, DMG background and layout, signing certificate helper
 Makefile, VERSION
 ```
 
