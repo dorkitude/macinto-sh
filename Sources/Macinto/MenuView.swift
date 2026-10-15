@@ -65,7 +65,23 @@ struct OnboardingView: View {
                 Permissions.promptScreenRecording(firstAttempt: first) { state.setupRequestInFlight = false }
             }
 
-            if state.permissionsOK {
+            if state.permissionsOK && !state.directCaptureChecked {
+                HStack(alignment: .center, spacing: 10) {
+                    if let err = state.directCaptureError {
+                        Text("Test capture failed: \(err)")
+                            .font(.system(size: 12)).foregroundStyle(TN.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 4)
+                        Button("Try again") { state.runDirectCaptureCheck() }
+                            .buttonStyle(PrimaryButtonStyle(colors: [TN.purple, TN.magenta]))
+                    } else {
+                        Text("macOS may ask once more to let Macinto.sh capture the screen directly. Click Allow.")
+                            .font(.system(size: 12)).foregroundStyle(TN.text2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .card(padding: 10)
+            } else if state.permissionsOK {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(TN.green)
                     Text("All set. Opening the controls…").font(.system(size: 12)).foregroundStyle(TN.green)

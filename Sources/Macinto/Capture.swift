@@ -84,6 +84,23 @@ enum Capture {
         return Paths.captures.appendingPathComponent(name)
     }
 
+    /// A tiny throwaway capture of the main display, made once during setup. macOS asks the user to
+    /// allow apps that capture directly (without the system window picker); doing one capture here
+    /// makes that prompt appear in setup instead of during an agent's first screenshot.
+    static func setupTestCapture() async -> String? {
+        do {
+            let (filter, _, _) = try await filter(displayIndex: 0, appName: nil)
+            let config = SCStreamConfiguration()
+            config.width = 64
+            config.height = 40
+            config.capturesAudio = false
+            _ = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     /// Capture a PNG. By default it is scaled to points so image pixels == click coordinates.
     /// `maxWidth` > 0 scales the image down (keeping aspect) so it is at most that many pixels wide.
     static func screenshot(displayIndex: Int, appName: String?, nativeResolution: Bool, maxWidth: Int) async throws -> JSON {

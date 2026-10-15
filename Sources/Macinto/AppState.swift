@@ -74,6 +74,28 @@ final class AppState: ObservableObject {
     /// Pending switch from onboarding (both checkmarks shown) to the next screen.
     private var advanceWork: DispatchWorkItem?
 
+    /// The one-time setup capture (see Capture.setupTestCapture) has run on this Mac.
+    @Published private(set) var directCaptureChecked = UserDefaults.standard.bool(forKey: "directCaptureChecked") {
+        didSet { UserDefaults.standard.set(directCaptureChecked, forKey: "directCaptureChecked") }
+    }
+    @Published private(set) var directCaptureRunning = false
+    @Published private(set) var directCaptureError: String?
+
+    func runDirectCaptureCheck() {
+        guard !directCaptureRunning else { return }
+        directCaptureRunning = true
+        directCaptureError = nil
+        ActionLog.shared.write(event: "setup: test capture (macOS may ask to allow direct screen capture)")
+        Task { @MainActor in
+            let error = await Capture.setupTestCapture()
+            ActionLog.shared.write(event: "setup: test capture \(error.map { "failed: \($0)" } ?? "ok")")
+            directCaptureRunning = false
+            directCaptureError = error
+            if error == nil { directCaptureChecked = true }
+            updateScreen()
+        }
+    }
+
     #if DEBUG
     /// `--snapshot STATE OUT.png` (dev builds only): fake permission state and a fixed screen, rendered
     /// offscreen to a PNG. Grants nothing; see Snapshot.swift.
@@ -219,6 +241,11 @@ final class AppState: ObservableObject {
                 disable(reason: "permission revoked")
                 onPermissionsLost?()
             }
+            return
+        }
+        if screen == .onboarding, !directCaptureChecked {
+            // One test capture first, so macOS's "allow direct screen capture" prompt shows up here.
+            if !directCaptureRunning, directCaptureError == nil { runDirectCaptureCheck() }
             return
         }
         if screen == .onboarding, advanceWork == nil {
