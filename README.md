@@ -9,8 +9,67 @@ Agents and scripts call `macinto.sh`; only the app needs to be trusted by macOS.
 The app does nothing until a person enables it from the menu bar, and enabling
 is time-limited.
 
+## Install
+
+Requires macOS 15 or later. Universal (Apple silicon and Intel).
+
+Homebrew:
+
+```bash
+brew install --cask dorkitude/tap/macinto-sh
+```
+
+This installs `Macinto.sh.app` in `/Applications` and links `macinto.sh` into
+Homebrew's `bin` (on your `PATH`).
+
+Or download the DMG from
+[github.com/dorkitude/macinto-sh/releases/latest](https://github.com/dorkitude/macinto-sh/releases/latest),
+open it, and drag Macinto.sh to Applications. Then click **Install CLI** in the
+app (see below) to put `macinto.sh` on your `PATH`.
+
+The app is signed with a Developer ID and notarized by Apple. The CLI is a
+single native binary inside the app bundle (`Contents/Helpers/macinto.sh`).
+
+## First run
+
+1. Open Macinto.sh, or just run any `macinto.sh` command (or start the MCP
+   server). If the app isn't running, the CLI launches it and waits up to 10
+   seconds for it. Pass `--no-launch` (or set `MACINTO_NO_LAUNCH=1`) to get a
+   `not_running` error instead.
+2. Until setup is finished, the app shows a setup screen and every request
+   except `status`, `permissions`, `screen list` and `keys` fails with code
+   `setup`:
+
+   ```
+   macinto.sh: Macinto.sh needs setup: finish it in the Macinto.sh window (it's open now), then enable it.
+   ```
+
+   The setup screen has one button per permission (each opens the right
+   System Settings pane):
+   - **Accessibility**: needed for `click`, `move`, `drag`, `scroll`, `type`,
+     `key`, `ui`, `press`, `focus`, `set-value`.
+   - **Screen Recording**: needed for `screenshot` and `record`. macOS often
+     reports this grant only to a new process, so after you turn it on, click
+     **Relaunch Macinto.sh**.
+
+   Once both are on, the app takes one test capture (so macOS's "allow direct
+   screen capture" prompt appears now, not in the middle of an agent's run),
+   then shows a short note about the red apple, then the controls. If a
+   permission is turned off later, Macinto.sh disables itself, stops any
+   recording, and goes back to the setup screen.
+3. Enable it: pick a duration and click **Enable** (see below). Nothing can
+   enable it from the command line.
+
+When a request is refused because setup isn't finished, the app brings its
+window to the front without activating or taking keyboard focus, so you can
+see what's left. `macinto.sh status` shows `state: setup needed`, `disabled`
+or `enabled`, and which setup steps remain.
+
+Once enabled:
+
 ```
 $ macinto.sh status
+state: enabled
 enabled: yes
 remaining: 1712
 accessibility: granted
@@ -23,35 +82,31 @@ $ macinto.sh screenshot -o /tmp/screen.png
 /tmp/screen.png 1800x1169
 ```
 
-Requires macOS 15 or later. Universal (Apple silicon and Intel).
+### Install CLI
 
-## Install
+Homebrew installs already have `macinto.sh` on `PATH`; the app's footer then
+shows **CLI installed ✓**. Otherwise **Install CLI** symlinks
+`/usr/local/bin/macinto.sh` to the bundled CLI (one admin password prompt). If
+you cancel the prompt, it links `~/.local/bin/macinto.sh` instead and tells you
+if `~/.local/bin` isn't on your `PATH`. To do it by hand:
 
-1. Download `Macinto.sh-<version>.dmg`, open it, and drag Macinto.sh to
-   Applications. The app is signed with a Developer ID and notarized by Apple.
-2. Open Macinto.sh. Until both permissions are on, it shows only a setup
-   screen, with one button per permission (each opens the right System
-   Settings pane):
-   - **Accessibility**: needed for `click`, `move`, `drag`, `scroll`, `type`,
-     `key`, `ui`, `press`, `focus`, `set-value`.
-   - **Screen Recording**: needed for `screenshot` and `record`. macOS often
-     reports this grant only to a new process, so after you turn it on, click
-     **Relaunch Macinto.sh**.
+```bash
+ln -s /Applications/Macinto.sh.app/Contents/Helpers/macinto.sh /usr/local/bin/macinto.sh
+```
 
-   The setup screen checks every second. When both show a green checkmark it
-   switches to the controls (the first time, via a short note about the red
-   apple). If a permission is turned off later, Macinto.sh disables itself,
-   stops any recording, and goes back to the setup screen.
-3. Click **Install CLI**. It symlinks `macinto.sh` into
-   `/opt/homebrew/bin` (if it exists and is writable) or `/usr/local/bin`
-   (asks for an admin password). To do it by hand:
+### Finding the app
 
-   ```bash
-   ln -s /Applications/Macinto.sh.app/Contents/Helpers/macinto.sh /usr/local/bin/macinto.sh
-   ```
+When the CLI needs to launch the app, it uses the first of:
 
-The CLI is a single native binary inside the app bundle
-(`Contents/Helpers/macinto.sh`). There is no script or runtime to install.
+1. `MACINTO_APP=/path/to/Macinto.sh.app`, if set
+2. the app bundle the CLI binary itself lives in (symlinks resolved), so the
+   Homebrew link and `/usr/local/bin` link launch the app they point into
+3. `/Applications/Macinto.sh.app`, `~/Applications/Macinto.sh.app`
+4. Spotlight, by bundle id `com.dorkitude.macinto.sh`
+5. LaunchServices, by bundle id (`open -b`)
+
+If none is found it exits 1 with code `not_installed` and the install
+commands above.
 
 <p>
   <img src="docs/onboarding.png" width="400" alt="Setup screen: Accessibility on, Screen Recording off">
@@ -100,8 +155,11 @@ process and pid, command. Refused or failed requests are red.
 ## CLI reference
 
 ```
-macinto.sh [--json] [--dev] [--socket PATH] <command> [args]
+macinto.sh [--json] [--dev] [--no-launch] [--socket PATH] <command> [args]
 ```
+
+`--socket` (or `MACINTO_SOCKET`) talks to another socket; the CLI only
+auto-launches the app for its default socket.
 
 Coordinates are global points with the origin at the top-left of the main
 display (the CGEvent convention). Screenshots are scaled to points by default,
@@ -152,8 +210,12 @@ $ macinto.sh --json click 10 10
 {"code":"permission","error":"Accessibility permission is missing. ...","ok":false,"permission":"accessibility"}
 ```
 
-Error codes: `usage`, `not_running`, `disabled`, `permission`, `not_found`,
-`failed`.
+Error codes: `usage`, `not_running`, `not_installed`, `setup`, `disabled`,
+`permission`, `not_found`, `failed`.
+
+`status` reports the app's state for scripts: `"state"` is `"setup"`,
+`"disabled"` or `"enabled"`, and `"setup"` has `complete`, `accessibility`,
+`screen_recording`, `test_capture` and `tutorial` booleans.
 
 ### UI tree
 
@@ -202,8 +264,8 @@ server on stdin/stdout. Every CLI command is a tool: `status`, `click`, `move`,
 `press`, `focus`, `set_value`, `screenshot`, `record_start`, `record_stop`,
 `record_status`, `wait`.
 
-Tool calls go through the same socket as the CLI, so the enabled gate,
-permission checks and request log all apply. Errors come back as tool results
+Tool calls go through the same socket as the CLI, so auto-launch, the setup
+and enabled gates, permission checks and the request log all apply. Errors come back as tool results
 with `isError: true` and the same message the CLI prints. `screenshot` returns
 the PNG inline (use `max_width` to get a smaller image) plus a text line with
 the file path and size.
@@ -235,8 +297,9 @@ command = "macinto.sh"
 args = ["mcp"]
 ```
 
-Use the full path (`/opt/homebrew/bin/macinto.sh` or `/usr/local/bin/macinto.sh`)
-if the client doesn't inherit your shell's `PATH`.
+Use the full path (`/opt/homebrew/bin/macinto.sh` for Homebrew on Apple
+silicon, `/usr/local/bin/macinto.sh` after Install CLI) if the client doesn't
+inherit your shell's `PATH`.
 
 MCP requests show up in the log as `macinto.sh mcp[pid] <- <client process>`.
 
@@ -356,7 +419,8 @@ enabled state are faked for the image):
 ```
 
 States: `onboarding-none`, `onboarding-ax`, `onboarding-relaunch`,
-`onboarding-both`, `tutorial`, `control`, `control-enabled`.
+`onboarding-both`, `tutorial`, `control`, `control-enabled`, `control-cli`
+(footer with the CLI already installed).
 
 Both are compiled out of release builds (`#if DEBUG`). Don't distribute dev
 builds.
