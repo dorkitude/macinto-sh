@@ -83,11 +83,14 @@ struct OutlineButtonStyle: ButtonStyle {
 
 /// Text-only footer button.
 struct GhostButtonStyle: ButtonStyle {
+    /// Dimmed text, for a disabled button that just reports a state.
+    var muted = false
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .lineLimit(1).fixedSize()
             .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(configuration.isPressed ? TN.text : TN.text2)
+            .foregroundStyle(muted ? TN.muted : (configuration.isPressed ? TN.text : TN.text2))
             .padding(.horizontal, 7).padding(.vertical, 3)
             .background(RoundedRectangle(cornerRadius: 6).fill(configuration.isPressed ? TN.borderHi : TN.border))
             .contentShape(Rectangle())

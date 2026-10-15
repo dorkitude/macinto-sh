@@ -21,7 +21,13 @@ enum Commands {
     }
 
     private static func dispatch(_ command: String, _ args: Args) async -> Response {
-        let enabled = await MainActor.run { AppState.shared.enabled }
+        let (enabled, setupComplete) = await MainActor.run { (AppState.shared.enabled, AppState.shared.setupComplete) }
+        if !setupComplete && !allowedWhileDisabled.contains(command) {
+            // Bring the setup window forward so the person sees what's left, without activating the
+            // app or taking focus (same as the automatic show at launch). Never enables anything.
+            await MainActor.run { AppDelegate.current?.showControlWindow(explicit: false) }
+            return .error("Finish setup in the \(Paths.displayName) window (permissions), then enable it.", code: "setup")
+        }
         if !enabled && !allowedWhileDisabled.contains(command) {
             return .error("\(Paths.displayName) is disabled. Enable it from the \(Paths.displayName) menu bar icon (or its control window: open -a '\(Paths.displayName)').",
                           code: "disabled")
@@ -158,6 +164,8 @@ enum Commands {
         let s = AppState.shared
         s.refreshPermissions()
         var o: [String: JSON] = [
+            "state": .string(s.stateName),
+            "setup": s.setupJSON,
             "enabled": .bool(s.enabled),
             "unlimited": .bool(s.enabled && s.remainingSeconds == nil),
             "remaining_seconds": s.remainingSeconds.map { .int($0) } ?? .null,

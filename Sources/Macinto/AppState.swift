@@ -61,6 +61,32 @@ final class AppState: ObservableObject {
 
     var permissionsOK: Bool { accessibilityGranted && screenRecordingGranted }
 
+    /// Setup is done once the controls are showing: both permissions on, the one-time test capture
+    /// run, and the first-run note dismissed. Until then requests are refused with code "setup".
+    var setupComplete: Bool { screen == .control && permissionsOK }
+
+    /// "setup", "disabled" or "enabled", as reported by `status`.
+    var stateName: String { !setupComplete ? "setup" : (enabled ? "enabled" : "disabled") }
+
+    var setupJSON: JSON {
+        ["complete": .bool(setupComplete),
+         "accessibility": .bool(accessibilityGranted),
+         "screen_recording": .bool(screenRecordingGranted),
+         "test_capture": .bool(directCaptureChecked),
+         "tutorial": .bool(tutorialSeen)]
+    }
+
+    /// Where `macinto.sh` already links to this bundle's CLI, if anywhere (see CLIInstaller.installedLink).
+    @Published private(set) var cliInstalledPath: String?
+
+    func refreshCLIInstalled() {
+        #if DEBUG
+        if preview != nil { return }
+        #endif
+        let p = CLIInstaller.installedLink()
+        if p != cliInstalledPath { cliInstalledPath = p }
+    }
+
     /// Called after every enable/disable so the status item, overlay and recorder can react.
     var onEnabledChange: ((Bool) -> Void)?
     /// Called when a permission goes missing after onboarding (the delegate re-shows the window).
@@ -113,7 +139,7 @@ final class AppState: ObservableObject {
     enum Preview: String, CaseIterable {
         case onboardingNone = "onboarding-none", onboardingAX = "onboarding-ax",
              onboardingRelaunch = "onboarding-relaunch", onboardingBoth = "onboarding-both",
-             tutorial, control, controlEnabled = "control-enabled"
+             tutorial, control, controlEnabled = "control-enabled", controlCLI = "control-cli"
     }
     private(set) var preview: Preview?
     /// True in preview mode: every button that would change anything real is a no-op.
@@ -132,8 +158,9 @@ final class AppState: ObservableObject {
         switch p {
         case .onboardingNone, .onboardingAX, .onboardingRelaunch, .onboardingBoth: screen = .onboarding
         case .tutorial: screen = .tutorial
-        case .control, .controlEnabled: screen = .control
+        case .control, .controlEnabled, .controlCLI: screen = .control
         }
+        cliInstalledPath = p == .controlCLI ? "/opt/homebrew/bin/macinto.sh" : nil
         if p == .controlEnabled {
             now = Date()
             expiresAt = now.addingTimeInterval(23 * 60 + 41)
@@ -156,6 +183,7 @@ final class AppState: ObservableObject {
 
     private init() {
         refreshPermissions()
+        refreshCLIInstalled()
         advanceWork?.cancel()
         advanceWork = nil
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -220,6 +248,7 @@ final class AppState: ObservableObject {
             disable(reason: "timer expired")
         }
         refreshPermissions()
+        refreshCLIInstalled()
     }
 
     func refreshPermissions() {

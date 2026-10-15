@@ -336,7 +336,16 @@ struct ControlView: View {
 
     private var footer: some View {
         HStack(spacing: 6) {
-            Button("Install CLI", action: installCLI).buttonStyle(GhostButtonStyle())
+            if let path = state.cliInstalledPath {
+                // Already on PATH (e.g. the Homebrew cask's link): nothing to do.
+                Button("CLI installed ✓") {}
+                    .buttonStyle(GhostButtonStyle(muted: true))
+                    .disabled(true)
+                    .help("macinto.sh is installed at \(path)")
+            } else {
+                Button("Install CLI", action: installCLI).buttonStyle(GhostButtonStyle())
+                    .help("Link macinto.sh into /usr/local/bin (asks for an admin password) or ~/.local/bin")
+            }
             Button("Log", action: openLog).buttonStyle(GhostButtonStyle())
             Spacer()
             Text(verbatim: "v\(Paths.version)").font(TN.mono(10)).foregroundStyle(TN.muted)
