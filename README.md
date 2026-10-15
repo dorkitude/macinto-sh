@@ -1,4 +1,4 @@
-# macinto.sh
+# 🍎 macinto.sh
 
 Secure computer use tunnel for agentic control of Mac OS.
 
