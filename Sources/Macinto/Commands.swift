@@ -64,19 +64,19 @@ enum Commands {
             let count = try a.int("count", default: 1)
             guard (1...3).contains(count) else { throw CommandError.usage("'count' must be 1, 2 or 3") }
             try requireAX()
-            try Input.click(at: p, right: right, count: count)
+            try await MainActor.run { try Overlay.passThrough { try Input.click(at: p, right: right, count: count) } }
             return ["x": .num(p.x), "y": .num(p.y), "button": right ? "right" : "left", "count": .int(count)]
 
         case "move":
             let p = try a.point()
             try requireAX()
-            try Input.move(to: p)
+            try await MainActor.run { try Overlay.passThrough { try Input.move(to: p) } }
             return .point(p)
 
         case "drag":
             let p1 = try a.point("x1", "y1"), p2 = try a.point("x2", "y2")
             try requireAX()
-            try Input.drag(from: p1, to: p2)
+            try await MainActor.run { try Overlay.passThrough { try Input.drag(from: p1, to: p2) } }
             return ["from": .point(p1), "to": .point(p2)]
 
         case "scroll":

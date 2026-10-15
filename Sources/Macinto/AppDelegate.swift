@@ -142,6 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController = host
 
         state.onEnabledChange = { [weak self] enabled in self?.enabledChanged(enabled) }
+        overlay.onClick = { [weak self] in self?.showControlWindow(explicit: true) }
         state.onPermissionsLost = { [weak self] in self?.permissionsLost() }
         updateIcon()
 
