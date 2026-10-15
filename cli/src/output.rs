@@ -122,7 +122,7 @@ pub fn render(kind: &str, d: &Value) -> String {
             out.push(format!("accessibility: {}", granted(&d["accessibility"])));
             out.push(format!("screen_recording: {}", granted(&d["screen_recording"])));
             if d["accessibility"].as_bool() != Some(true) || d["screen_recording"].as_bool() != Some(true) {
-                out.push("Grant missing permissions from the Macinto.sh menu bar icon, or in System Settings > Privacy & Security.".into());
+                out.push("Turn on missing permissions from the Macinto.sh setup screen (open -a Macinto.sh), or in System Settings > Privacy & Security.".into());
             }
         }
         "displays" => {
@@ -210,7 +210,7 @@ mod tests {
     fn status_infinite() {
         let d = json!({"enabled": true, "unlimited": true, "remaining_seconds": null,
                        "permissions": {"accessibility": false, "screen_recording": true},
-                       "version": "0.1.0", "recording": false, "displays": []});
+                       "version": "0.1.101", "recording": false, "displays": []});
         let t = render("status", &d);
         assert!(t.contains("remaining: ∞"));
         assert!(t.contains("accessibility: missing"));

@@ -43,7 +43,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             host.sizingOptions = .preferredContentSize
             let p = NSPanel(contentViewController: host)
             p.title = Paths.displayName
-            p.styleMask = [.titled, .closable, .utilityWindow, .nonactivatingPanel]
+            p.styleMask = [.titled, .closable, .utilityWindow, .nonactivatingPanel, .fullSizeContentView]
+            // Tokyo Night: always dark, title bar blends into the content.
+            p.appearance = NSAppearance(named: .darkAqua)
+            p.backgroundColor = TN.nsBg
+            p.titlebarAppearsTransparent = true
+            p.titleVisibility = .hidden
             p.isFloatingPanel = true
             p.becomesKeyOnlyIfNeeded = true
             p.hidesOnDeactivate = false
@@ -75,11 +80,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             state: state,
             statusItemHidden: { [weak self] in !(self?.statusItemOnScreen ?? true) },
             installCLI: { [weak self] in
+                if self?.state.isPreview == true { ActionLog.shared.write(event: "DEBUG: preview: Install CLI ignored"); return }
                 if closeOnInstall { self?.popover.performClose(nil) }
                 CLIInstaller.install()
             },
             openLog: { NSWorkspace.shared.open(Paths.log) },
+            relaunch: { [weak self] in
+                if self?.state.isPreview == true { ActionLog.shared.write(event: "DEBUG: preview: Relaunch ignored"); return }
+                AppDelegate.relaunch()
+            },
             quit: { NSApp.terminate(nil) })
+    }
+
+    /// Start a fresh copy of this app once this process has exited (Screen Recording is often only
+    /// reported as granted to a new process).
+    static func relaunch() {
+        ActionLog.shared.write(event: "relaunching (screen recording setup)")
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; exec /usr/bin/open \"$2\"",
+                       "sh", String(getpid()), Bundle.main.bundleURL.path]
+        do {
+            try p.run()
+        } catch {
+            ActionLog.shared.write(event: "relaunch failed: \(error)")
+            return
+        }
+        NSApp.terminate(nil)
     }
 
     var statusItemDescription: String {
@@ -103,12 +130,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         popover = NSPopover()
         popover.behavior = .transient
+        popover.appearance = NSAppearance(named: .darkAqua)
         let host = NSHostingController(rootView: makeMenuView(closeOnInstall: true))
         host.sizingOptions = .preferredContentSize
         popover.contentViewController = host
 
         state.onEnabledChange = { [weak self] enabled in self?.enabledChanged(enabled) }
+        state.onPermissionsLost = { [weak self] in self?.permissionsLost() }
         updateIcon()
+
+        state.chooseLaunchScreen()
 
         let server = SocketServer(path: Paths.socket.path) { request, peer in
             await Commands.handle(request, peer)
@@ -127,6 +158,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Setup needed: show it right away, without taking focus.
+        if state.screen != .control {
+            showControlWindow(explicit: false)
+        }
+
         // If macOS hid the menu bar icon (no room), open the control window so Macinto stays reachable.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let self, !self.statusItemOnScreen else { return }
@@ -140,8 +176,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let argv = CommandLine.arguments
         if let i = argv.firstIndex(of: "--enable-for-testing"), i + 1 < argv.count, let secs = Double(argv[i + 1]),
            secs > 0 {
+            // Same rule as the Enable button: refused until both permissions are on.
             state.enable(for: min(secs, 3600))
-            ActionLog.shared.write(event: "DEBUG: enabled by --enable-for-testing \(argv[i + 1])")
+            ActionLog.shared.write(event: "DEBUG: --enable-for-testing \(argv[i + 1]): \(state.enabled ? "enabled" : "refused (setup not finished)")")
         }
         #endif
     }
@@ -165,6 +202,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    /// A permission was revoked after setup: the state is already disabled and back on onboarding.
+    private func permissionsLost() {
+        if Recorder.shared.isRecording {
+            Task { @MainActor in
+                _ = try? await Recorder.shared.stop()
+                ActionLog.shared.write(event: "recording stopped because a permission was revoked")
+            }
+        }
+        // Re-show without activating or taking key focus.
+        if !(popover?.isShown ?? false) { showControlWindow(explicit: false) }
     }
 
     private func updateIcon() {

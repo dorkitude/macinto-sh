@@ -30,13 +30,78 @@ final class AppState: ObservableObject {
     @Published private(set) var screenRecordingGranted = false
     @Published var recordingActive = false
 
+    /// Which screen the control window and popover show.
+    enum Screen: Equatable { case onboarding, tutorial, control }
+    @Published private(set) var screen: Screen = .onboarding
+    /// Set once the user clicks the Screen Recording button; shows the Relaunch button.
+    @Published var screenRecordingRequested = false
+
+    var permissionsOK: Bool { accessibilityGranted && screenRecordingGranted }
+
     /// Called after every enable/disable so the status item, overlay and recorder can react.
     var onEnabledChange: ((Bool) -> Void)?
+    /// Called when a permission goes missing after onboarding (the delegate re-shows the window).
+    var onPermissionsLost: (() -> Void)?
+
+    private static let tutorialSeenKey = "tutorialSeen"
+    private var tutorialSeen: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.tutorialSeenKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.tutorialSeenKey) }
+    }
+    /// Pending switch from onboarding (both checkmarks shown) to the next screen.
+    private var advanceWork: DispatchWorkItem?
+
+    #if DEBUG
+    /// `--snapshot STATE OUT.png` (dev builds only): fake permission state and a fixed screen, rendered
+    /// offscreen to a PNG. Grants nothing; see Snapshot.swift.
+    enum Preview: String, CaseIterable {
+        case onboardingNone = "onboarding-none", onboardingAX = "onboarding-ax",
+             onboardingRelaunch = "onboarding-relaunch", onboardingBoth = "onboarding-both",
+             tutorial, control, controlEnabled = "control-enabled"
+    }
+    private(set) var preview: Preview?
+    /// True in preview mode: every button that would change anything real is a no-op.
+    var isPreview: Bool { preview != nil }
+
+    func startPreview(_ p: Preview) {
+        preview = p
+        enabled = false
+        expiresAt = nil
+        recent = []
+        let ax = p != .onboardingNone
+        let sr = ![.onboardingNone, .onboardingAX, .onboardingRelaunch].contains(p)
+        accessibilityGranted = ax
+        screenRecordingGranted = sr
+        screenRecordingRequested = p == .onboardingRelaunch
+        switch p {
+        case .onboardingNone, .onboardingAX, .onboardingRelaunch, .onboardingBoth: screen = .onboarding
+        case .tutorial: screen = .tutorial
+        case .control, .controlEnabled: screen = .control
+        }
+        if p == .controlEnabled {
+            now = Date()
+            expiresAt = now.addingTimeInterval(23 * 60 + 41)
+            enabled = true
+            let t = Date()
+            recent = [
+                ActionRecord(time: t.addingTimeInterval(-2), caller: "claude", pid: 48211, command: "screenshot --max-width 1280", ok: true),
+                ActionRecord(time: t.addingTimeInterval(-5), caller: "claude", pid: 48211, command: "click 812 440", ok: true),
+                ActionRecord(time: t.addingTimeInterval(-9), caller: "macinto.sh", pid: 48190, command: "ui app=Safari depth=3", ok: true),
+                ActionRecord(time: t.addingTimeInterval(-14), caller: "python3", pid: 47702, command: "record start", ok: false),
+                ActionRecord(time: t.addingTimeInterval(-31), caller: "claude", pid: 48211, command: "type text=\"hello 🍎\"", ok: true),
+            ]
+        }
+    }
+    #else
+    var isPreview: Bool { false }
+    #endif
 
     private var timer: Timer?
 
     private init() {
         refreshPermissions()
+        advanceWork?.cancel()
+        advanceWork = nil
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
@@ -69,6 +134,14 @@ final class AppState: ObservableObject {
     }
 
     func enable(for duration: TimeInterval?) {
+        #if DEBUG
+        if preview != nil { ActionLog.shared.write(event: "DEBUG: preview: Enable ignored"); return }
+        #endif
+        // Can't be enabled until both permissions are on (i.e. during onboarding).
+        guard permissionsOK, screen == .control else {
+            ActionLog.shared.write(event: "enable refused: permissions missing or setup not finished")
+            return
+        }
         now = Date()
         expiresAt = duration.map { now.addingTimeInterval($0) }
         enabled = true
@@ -94,10 +167,57 @@ final class AppState: ObservableObject {
     }
 
     func refreshPermissions() {
+        #if DEBUG
+        if preview != nil { return }
+        #endif
         let ax = Permissions.accessibility
         let sc = Permissions.screenRecording
         if ax != accessibilityGranted { accessibilityGranted = ax }
         if sc != screenRecordingGranted { screenRecordingGranted = sc }
+        updateScreen()
+    }
+
+    /// Initial screen at launch: straight to the controls (or the one-time tutorial) when both
+    /// permissions are already on, otherwise onboarding.
+    func chooseLaunchScreen() {
+        #if DEBUG
+        if preview != nil { return }
+        #endif
+        screen = permissionsOK ? (tutorialSeen ? .control : .tutorial) : .onboarding
+    }
+
+    private func updateScreen() {
+        if !permissionsOK {
+            advanceWork?.cancel()
+            advanceWork = nil
+            if screen != .onboarding {
+                screen = .onboarding
+                ActionLog.shared.write(event: "permission missing (accessibility: \(accessibilityGranted), screen recording: \(screenRecordingGranted)); back to setup")
+                disable(reason: "permission revoked")
+                onPermissionsLost?()
+            }
+            return
+        }
+        if screen == .onboarding, advanceWork == nil {
+            // Both checkmarks stay up for 3 s, then the tutorial (first time only) or the controls.
+            let work = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, self.permissionsOK, self.screen == .onboarding else { return }
+                    self.advanceWork = nil
+                    self.screen = self.tutorialSeen ? .control : .tutorial
+                }
+            }
+            advanceWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+        }
+    }
+
+    func finishTutorial() {
+        #if DEBUG
+        if preview != nil { ActionLog.shared.write(event: "DEBUG: preview: Got it ignored"); return }
+        #endif
+        tutorialSeen = true
+        screen = .control
     }
 
     func record(_ r: ActionRecord) {

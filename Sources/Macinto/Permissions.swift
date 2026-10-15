@@ -9,12 +9,14 @@ enum Permissions {
     static var screenRecording: Bool { CGPreflightScreenCaptureAccess() }
 
     static func promptAccessibility() {
+        ActionLog.shared.write(event: "setup: accessibility button clicked")
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(opts)
         openSettings("Privacy_Accessibility")
     }
 
     static func promptScreenRecording() {
+        ActionLog.shared.write(event: "setup: screen recording button clicked")
         if !CGRequestScreenCaptureAccess() {
             openSettings("Privacy_ScreenCapture")
         }
@@ -32,7 +34,7 @@ enum Permissions {
     }
 
     static let accessibilityError =
-        "Accessibility permission is missing. Grant it in System Settings > Privacy & Security > Accessibility (enable Macinto.sh), or use the Grant button in the Macinto.sh menu."
+        "Accessibility permission is missing. Grant it in System Settings > Privacy & Security > Accessibility (enable Macinto.sh), or open Macinto.sh and use its setup screen."
     static let screenRecordingError =
-        "Screen Recording permission is missing. Grant it in System Settings > Privacy & Security > Screen & System Audio Recording (enable Macinto.sh), then quit and reopen Macinto.sh."
+        "Screen Recording permission is missing. Grant it in System Settings > Privacy & Security > Screen & System Audio Recording (enable Macinto.sh), then relaunch Macinto.sh."
 }

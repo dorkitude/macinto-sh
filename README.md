@@ -29,12 +29,20 @@ Requires macOS 15 or later. Universal (Apple silicon and Intel).
 
 1. Download `Macinto.sh-<version>.dmg`, open it, and drag Macinto.sh to
    Applications. The app is signed with a Developer ID and notarized by Apple.
-2. Open Macinto.sh. Click the 🍎 in the menu bar and use the **Grant…** buttons:
+2. Open Macinto.sh. Until both permissions are on, it shows only a setup
+   screen, with one button per permission (each opens the right System
+   Settings pane):
    - **Accessibility**: needed for `click`, `move`, `drag`, `scroll`, `type`,
      `key`, `ui`, `press`, `focus`, `set-value`.
-   - **Screen Recording**: needed for `screenshot` and `record`. macOS applies
-     this grant only after the app restarts, so quit and reopen it.
-3. Click **Install command line tool…**. It symlinks `macinto.sh` into
+   - **Screen Recording**: needed for `screenshot` and `record`. macOS often
+     reports this grant only to a new process, so after you turn it on, click
+     **Relaunch Macinto.sh**.
+
+   The setup screen checks every second. When both show a green checkmark it
+   switches to the controls (the first time, via a short note about the red
+   apple). If a permission is turned off later, Macinto.sh disables itself,
+   stops any recording, and goes back to the setup screen.
+3. Click **Install CLI**. It symlinks `macinto.sh` into
    `/opt/homebrew/bin` (if it exists and is writable) or `/usr/local/bin`
    (asks for an admin password). To do it by hand:
 
@@ -44,6 +52,11 @@ Requires macOS 15 or later. Universal (Apple silicon and Intel).
 
 The CLI is a single native binary inside the app bundle
 (`Contents/Helpers/macinto.sh`). There is no script or runtime to install.
+
+<p>
+  <img src="docs/onboarding.png" width="400" alt="Setup screen: Accessibility on, Screen Recording off">
+  <img src="docs/control-enabled.png" width="368" alt="Controls while enabled">
+</p>
 
 If your menu bar is full, macOS hides new menu bar icons without telling the
 app. When that happens Macinto.sh shows a small window with the same controls.
@@ -74,13 +87,15 @@ Enabling needs a person:
 
 While enabled:
 
-- The menu bar icon is a full-color 🍎. When disabled it is a dimmed, gray 🍎.
+- The menu bar icon is a full-color 🍎, and the controls show a small
+  pulsing 🍎. When disabled it is a dimmed, gray 🍎.
 - A big red apple flashes in the top-right corner of the main screen, just
   below the menu bar. It ignores the mouse, shows on every Space, and is left
   out of Macinto.sh's own screenshots and recordings.
 
-The menu also shows the time remaining, the last 10 requests (time, calling
-process and pid, command), and whether each permission is granted.
+The controls (menu bar popover or window) show the time remaining, the
+duration slider, and the last 10 requests: time, calling process and pid,
+command. Refused or failed requests are red.
 
 ## CLI reference
 
@@ -318,7 +333,7 @@ copied out of the DMG.
 `make dev-app` builds `build/debug/Macinto.sh (Dev).app` in the debug
 configuration. It is a separate app as far as macOS is concerned:
 
-- bundle id `sh.macinto.app.dev`, named "Macinto.sh (Dev)"
+- bundle id `com.dorkitude.macinto.sh.dev`, named "Macinto.sh (Dev)"
 - signed with `macinto local signing` (or ad-hoc), never the Developer ID
 - its own socket (`macinto-dev.sock`) and log (`~/Library/Logs/macinto-dev.log`)
 
@@ -330,14 +345,27 @@ open -g "build/debug/Macinto.sh (Dev).app" --args --enable-for-testing 60   # se
 macinto.sh --dev status
 ```
 
-This code is compiled out of release builds (`#if DEBUG`). Don't distribute
-dev builds.
+Like the Enable button, this is refused until both permissions are on.
+
+Dev builds can also render a UI state to a PNG offscreen, without showing a
+window, starting the socket, or checking real permissions (the permission and
+enabled state are faked for the image):
+
+```bash
+"build/debug/Macinto.sh (Dev).app/Contents/MacOS/Macinto" --snapshot control-enabled build/screenshots/control-enabled.png
+```
+
+States: `onboarding-none`, `onboarding-ax`, `onboarding-relaunch`,
+`onboarding-both`, `tutorial`, `control`, `control-enabled`.
+
+Both are compiled out of release builds (`#if DEBUG`). Don't distribute dev
+builds.
 
 ## Layout
 
 ```
 cli/                     macinto.sh: Rust CLI and MCP server (Cargo binary macinto_sh)
-Sources/Macinto/         app: socket server, commands, input, AX tree, capture, menu, overlay
+Sources/Macinto/         app: socket server, commands, input, AX tree, capture, setup + controls UI, overlay
 Resources/Info.plist     bundle Info.plist template
 scripts/                 icon, DMG background and layout, signing certificate helper
 Makefile, VERSION

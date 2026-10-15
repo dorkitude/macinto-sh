@@ -6,7 +6,7 @@ enum Paths {
     /// ~/Library/Application Support/macinto (mode 0700)
     static let supportDir = home.appendingPathComponent("Library/Application Support/macinto", isDirectory: true)
     #if DEBUG
-    /// Dev builds (bundle id sh.macinto.app.dev) use their own socket and log, so they can never be
+    /// Dev builds (bundle id com.dorkitude.macinto.sh.dev) use their own socket and log, so they can never be
     /// mistaken for the release app. Target them with `macinto.sh --dev`.
     static let socket = supportDir.appendingPathComponent("macinto-dev.sock")
     static let log = home.appendingPathComponent("Library/Logs/macinto-dev.log")
@@ -16,6 +16,8 @@ enum Paths {
     static let log = home.appendingPathComponent("Library/Logs/macinto.log")
     static let displayName = "Macinto.sh"
     #endif
+    /// Name shown in the setup screen and controls. Snapshot renders use the release name.
+    nonisolated(unsafe) static var uiName = displayName
     /// Screenshots and recordings are written here first; the CLI moves them to their destination.
     static let captures = supportDir.appendingPathComponent("captures", isDirectory: true)
 
