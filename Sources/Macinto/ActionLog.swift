@@ -3,7 +3,7 @@ import Foundation
 /// Appends one tab-separated line per request to ~/Library/Logs/macinto.log.
 final class ActionLog: @unchecked Sendable {
     static let shared = ActionLog()
-    private let queue = DispatchQueue(label: "sh.macinto.log")
+    private let queue = DispatchQueue(label: "com.dorkitude.macinto.sh.log")
     private let formatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

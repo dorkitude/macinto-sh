@@ -6,13 +6,13 @@
 VERSION    := $(shell cat VERSION)
 APP_NAME   := Macinto.sh
 EXEC_NAME  := Macinto
-BUNDLE_ID  := sh.macinto.app
+BUNDLE_ID  := com.dorkitude.macinto.sh
 BUILD      := build
 APP        := $(BUILD)/$(APP_NAME).app
 # Dev build: separate bundle id, name, socket and log, and never the Developer ID, so it can't
 # share the release app's privacy grants.
 DEV_NAME   := Macinto.sh (Dev)
-DEV_ID     := sh.macinto.app.dev
+DEV_ID     := com.dorkitude.macinto.sh.dev
 DEV_APP    := $(BUILD)/debug/$(DEV_NAME).app
 DMG        := $(BUILD)/$(APP_NAME)-$(VERSION).dmg
 ICONSET    := $(BUILD)/AppIcon.iconset
@@ -81,7 +81,7 @@ define bundle
 	plutil -lint "$(1)/Contents/Info.plist" >/dev/null
 	@echo "signing $(1) with identity: $(5)"
 	codesign --force --options runtime $(if $(findstring Developer ID,$(5)),--timestamp,--timestamp=none) \
-		--identifier $(subst .app,.cli,$(3)) --sign "$(5)" "$(1)/Contents/Helpers/macinto.sh"
+		--identifier $(3).cli --sign "$(5)" "$(1)/Contents/Helpers/macinto.sh"
 	codesign --force --options runtime $(if $(findstring Developer ID,$(5)),--timestamp,--timestamp=none) \
 		--identifier $(3) --sign "$(5)" "$(1)"
 	codesign --verify --strict --deep --verbose=1 "$(1)"
