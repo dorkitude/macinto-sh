@@ -1,13 +1,47 @@
 # macinto.sh
 
-A computer use tunnel for macOS. `Macinto.sh.app` is a menu bar app that holds
-the Accessibility and Screen Recording permissions. `macinto.sh` is a command
-line tool (and MCP server) that asks the app to click, type, press keys, read
-the UI tree, take screenshots and record the screen.
+Secure computer use tunnel for agentic control of Mac OS.
 
-Agents and scripts call `macinto.sh`; only the app needs to be trusted by macOS.
-The app does nothing until a person enables it from the menu bar, and enabling
-is time-limited.
+## Backstory
+
+I really don't like using my mouse, because most GUIs drive me insane.  They hijack
+my brain's main context window, require immense focus, and are often adversarial in
+their design.  Plus they're uglier than my sweet sweet terminal.
+
+So I like to make AI do that part. I'm a big fan of Chrome automation,
+Playwright, etc, because like, trying to cancel a "Subscribe & Save" on Amazon.com
+feels like a freaking escape room, and they keep moving stuff around on me.
+
+But sometimes I want my agent to control my _entire Mac_.  But to do that from a
+terminal, or from Codex/Claude, you have to enable `Accessibility` and
+`Screen & System Audio Recording` app-wide, which is tantamount to granting blanket
+"hack me" permissions to a nondeterministic executor, permanently.  Like an opt-in
+[Back Orifice](https://en.wikipedia.org/wiki/Back_Orifice).  That didn't feel very safe.
+
+So I made `macinto.sh` to have a more secure way to not have the aesthetic experience
+of using GUIs.
+
+## How it works
+
+Macinto.sh consists of two parts:
+  - `Macinto.sh.app` is a menu bar app that holds the Accessibility and Screen Recording permissions.
+  - `macinto.sh` is a command line tool (and MCP server) that asks the app to click, type, press keys,
+    read the UI tree, take screenshots and record the screen.
+
+Agents and scripts call `macinto.sh` or use the MCP server.
+Only the `.app` needs to be trusted by macOS.
+
+So you don't have to blanket trust your terminal emulator.
+The app does nothing until a person enables it from the menu bar, and enabling has a 30-minute default,
+in case you forget to turn it off.  So the MacOS permission is permanent, but the app itself blocks all
+automation activity once the timer runs out.
+
+It also makes a bright red apple flash in the corner of your screen, and on your menu bar, so you know
+you're exposed.  It also logs all automation activity that has passed through it.
+
+You _can_ turn it on indefinitely if you choose to, but that isn't the default.
+
+I hope some people find it useful :)
 
 ## Install
 
