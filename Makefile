@@ -56,14 +56,19 @@ dev-app: $(ICNS) $(SOURCES) macinto.sh Resources/Info.plist VERSION
 	$(call bundle,$(DEV_APP),$(shell swift build -c debug --show-bin-path)/$(APP_NAME))
 	@echo "built $(DEV_APP) (DEBUG)"
 
-dmg: app
-	rm -rf $(BUILD)/dmg "$(DMG)"
-	mkdir -p $(BUILD)/dmg
-	cp -R "$(APP)" $(BUILD)/dmg/
-	ln -s /Applications $(BUILD)/dmg/Applications
-	hdiutil create -volname "$(APP_NAME) $(VERSION)" -srcfolder $(BUILD)/dmg -ov -format UDZO "$(DMG)"
+DMG_BG := $(BUILD)/dmg-background.tiff
+
+$(DMG_BG): scripts/make-dmg-background.swift
+	@mkdir -p $(BUILD)/dmg-bg
+	swift scripts/make-dmg-background.swift $(BUILD)/dmg-bg
+	tiffutil -cathidpicheck $(BUILD)/dmg-bg/background.png $(BUILD)/dmg-bg/background@2x.png -out $(DMG_BG)
+
+# Styled installer window (background arrow, big icons) via dmgbuild; needs uv.
+dmg: app $(DMG_BG) scripts/dmg-settings.py
+	rm -f "$(DMG)"
+	uvx --quiet dmgbuild -s scripts/dmg-settings.py -D app="$(APP)" -D background="$(DMG_BG)" \
+		-D icon="$(ICNS)" "$(APP_NAME) $(VERSION)" "$(DMG)"
 	@if [ "$(SIGN_IDENTITY)" != "-" ]; then codesign --force $(TIMESTAMP) --sign "$(SIGN_IDENTITY)" "$(DMG)"; fi
-	rm -rf $(BUILD)/dmg
 	@echo "built $(DMG)"
 
 # Create the local self-signed signing certificate in the login keychain.
