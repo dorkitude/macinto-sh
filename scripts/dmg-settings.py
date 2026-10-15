@@ -1,5 +1,5 @@
 # dmgbuild settings for the Macinto.sh installer window. Used by `make dmg`:
-#   uvx dmgbuild -s scripts/dmg-settings.py -D app=... -D background=... -D icon=... "Macinto.sh 0.1.0" out.dmg
+#   uvx dmgbuild -s scripts/dmg-settings.py -D app=... -D background=... -D icon=... "Macinto.sh 0.1.101" out.dmg
 # The background is drawn by scripts/make-dmg-background.swift; keep the positions below in sync with it.
 # pyright: reportUndefinedVariable=false
 import os.path
