@@ -183,7 +183,10 @@ Coordinates are global points with the origin at the top-left of the main
 display (the CGEvent convention). Screenshots are scaled to points by default,
 so a pixel at (x, y) in a screenshot of display 0 is clicked with
 `macinto.sh click x y`. Negative coordinates (displays left of or above the
-main one) are accepted.
+main one) are accepted. Screenshots of other displays, cropped `--app`
+screenshots and `--native`/`--max-width` images report an `origin` (global
+points of the image's top-left pixel) and a `scale` (image pixels per point):
+pixel (px, py) is clicked at (origin.x + px/scale, origin.y + py/scale).
 
 | Command | What it does |
 |---|---|
@@ -201,11 +204,11 @@ main one) are accepted.
 | `key COMBO...` (alias `hotkey`) | Key presses such as `cmd+shift+g`, `return`, `escape`, `tab`, `f5`, `left`, `cmd+plus` |
 | `app list`, `apps` | Running apps: `*` marks the frontmost; pid, bundle id, name |
 | `app open APP`, `open APP` | Activate an app by name, bundle id or path, launching it if needed |
-| `ui [--app APP] [--depth N]` | Dump the accessibility tree of the app's focused window (default: frontmost app) |
+| `ui [--app APP] [--depth N]` | Dump the accessibility tree of the app's focused window, or its front window (default: frontmost app). If the app has no windows, dumps the application element and its menu bar, and says so |
 | `press ID [--app APP]` | Perform AXPress on an element |
 | `focus ID [--app APP]` | Focus an element |
 | `set-value ID VALUE [--app APP]` (alias `setvalue`) | Set an element's value (e.g. a text field) |
-| `screenshot [-o FILE] [--force] [--display N] [--app APP] [--native] [--max-width PX]` | PNG of a display. Default file `./macinto-YYYYmmdd-HHMMSS.png` |
+| `screenshot [-o FILE] [--force] [--display N] [--app APP] [--native] [--max-width PX]` | PNG of a display, or with `--app` of that app's windows (cropped, 8 pt margin). Prints path, size, origin and scale. Default file `./macinto-YYYYmmdd-HHMMSS.png` |
 | `record start [-o FILE.mov] [--force] [--display N]` | Start a screen recording |
 | `record stop` | Stop and move the movie to the `-o` path |
 | `record status` | Is a recording running? |
@@ -255,6 +258,18 @@ $ macinto.sh press 0.1 --app TextEdit
 Ids are index paths from the window (`0`), resolved again on every call. If the
 UI changes between `ui` and `press`, run `ui` again.
 
+If the app has no windows, `ui` dumps the application element instead; its
+children are the menu bar (whose items can be pressed) and any windows. The
+output starts with a note, and the JSON result has `"windows": 0` and `"note"`:
+
+```
+$ macinto.sh ui --app TextEdit --depth 1
+note: TextEdit has no open windows; showing the app and its menu bar
+app: TextEdit (com.apple.TextEdit, pid 4121)
+0 AXApplication "TextEdit"
+  0.0 AXMenuBar
+```
+
 ### Examples
 
 ```bash
@@ -266,8 +281,10 @@ macinto.sh key return
 macinto.sh wait 1
 macinto.sh type "12*34="
 
-# Screenshot just one app
+# Screenshot just one app, cropped to its windows
 macinto.sh screenshot --app Safari -o safari.png
+# -> safari.png 1216x808 origin 92,64 scale 1
+#    pixel (px, py) is clicked at (92 + px, 64 + py)
 
 # Record ten seconds
 macinto.sh record start -o demo.mov
@@ -287,7 +304,8 @@ Tool calls go through the same socket as the CLI, so auto-launch, the setup
 and enabled gates, permission checks and the request log all apply. Errors come back as tool results
 with `isError: true` and the same message the CLI prints. `screenshot` returns
 the PNG inline (use `max_width` to get a smaller image) plus a text line with
-the file path and size.
+the file path, size, origin and scale; pixel (px, py) is clicked at
+(origin.x + px/scale, origin.y + py/scale).
 
 Claude Code:
 

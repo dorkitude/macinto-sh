@@ -188,7 +188,7 @@ fn connect(path: &Path) -> Result<UnixStream> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -235,7 +235,8 @@ mod tests {
     }
 
     /// One-shot fake app: answers every connection with `reply`.
-    fn fake_app(name: &str, reply: &'static str) -> PathBuf {
+    pub(crate) fn fake_app(name: &str, reply: impl Into<String>) -> PathBuf {
+        let reply: String = reply.into();
         let path = std::env::temp_dir().join(format!("macinto-{}-{name}.sock", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let l = std::os::unix::net::UnixListener::bind(&path).unwrap();

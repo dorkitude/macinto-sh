@@ -17,7 +17,8 @@ enum AXTree {
         return a
     }
 
-    /// The focused window of the app, falling back to its main window, its first window, then the app itself.
+    /// The focused window of the app, falling back to its main window, its first window, then the app
+    /// itself (whose children are its menu bar and any windows).
     static func root(of app: NSRunningApplication) -> AXUIElement {
         let appEl = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(appEl, 2.0)
@@ -93,6 +94,9 @@ enum AXTree {
     static func dump(appName: String?, maxDepth: Int) throws -> JSON {
         let app = try target(appName: appName)
         let root = root(of: app)
+        let appEl = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(appEl, 2.0)
+        let windows = (attr(appEl, kAXWindowsAttribute) as [AXUIElement]?)?.count ?? 0
         var elements: [JSON] = []
         var count = 0
         func walk(_ el: AXUIElement, _ id: String, _ depth: Int) {
@@ -103,12 +107,19 @@ enum AXTree {
             for (i, c) in children(el).enumerated() { walk(c, "\(id).\(i)", depth + 1) }
         }
         walk(root, "0", 0)
-        return [
+        var o: [String: JSON] = [
             "app": Apps.json(app, frontmost: app.isActive),
+            "windows": .int(windows),
             "elements": .array(elements),
             "truncated": .bool(count >= maxNodes),
             "max_elements": .int(maxNodes),
         ]
+        // No window to dump: root(of:) fell back to the application element (its children include
+        // the menu bar, which can be inspected and pressed). Say so instead of looking like a window.
+        if CFEqual(root, appEl) {
+            o["note"] = .string("\(app.localizedName ?? "The app") has no open windows; showing the app and its menu bar")
+        }
+        return .object(o)
     }
 
     static func resolve(_ id: String, appName: String?) throws -> AXUIElement {

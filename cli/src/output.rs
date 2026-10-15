@@ -31,6 +31,13 @@ fn clip(text: &str, n: usize) -> String {
     }
 }
 
+/// Screenshot pixels per point, as text ("1", "2", "0.53"). Older apps only send pixels_per_point.
+pub fn scale(d: &Value) -> Option<String> {
+    let f = d["scale"].as_f64().or_else(|| d["pixels_per_point"].as_f64())?;
+    let t = format!("{f:.2}");
+    Some(t.trim_end_matches('0').trim_end_matches('.').to_string())
+}
+
 fn rect(f: &Value) -> String {
     format!("{},{} {}x{}", num(&f["x"]), num(&f["y"]), num(&f["width"]), num(&f["height"]))
 }
@@ -200,6 +207,9 @@ pub fn render(kind: &str, d: &Value) -> String {
             }
         }
         "ui" => {
+            if let Some(note) = d["note"].as_str() {
+                out.push(format!("note: {note}"));
+            }
             let a = &d["app"];
             out.push(format!(
                 "app: {} ({}, pid {})",
@@ -215,7 +225,16 @@ pub fn render(kind: &str, d: &Value) -> String {
             }
         }
         "press" | "focus" | "set_value" => out.push(element_line(&d["element"], false)),
-        "screenshot" => out.push(format!("{} {}x{}", s(d, "path"), num(&d["width"]), num(&d["height"]))),
+        "screenshot" => {
+            let mut line = format!("{} {}x{}", s(d, "path"), num(&d["width"]), num(&d["height"]));
+            if d["origin"].is_object() {
+                line.push_str(&format!(" origin {},{}", num(&d["origin"]["x"]), num(&d["origin"]["y"])));
+            }
+            if let Some(scale) = scale(d) {
+                line.push_str(&format!(" scale {scale}"));
+            }
+            out.push(line);
+        }
         "record_start" => {
             let dest = s(d, "dest");
             let target = if dest.is_empty() { s(d, "path") } else { dest };
@@ -264,7 +283,7 @@ mod tests {
     fn status_infinite() {
         let d = json!({"enabled": true, "unlimited": true, "remaining_seconds": null,
                        "permissions": {"accessibility": false, "screen_recording": true},
-                       "version": "0.1.102", "recording": false, "displays": []});
+                       "version": "0.1.103", "recording": false, "displays": []});
         let t = render("status", &d);
         assert!(t.contains("remaining: ∞"));
         assert!(t.contains("accessibility: missing"));
@@ -298,12 +317,42 @@ mod tests {
     fn status_setup_state() {
         let d = json!({"state": "setup", "enabled": false,
                        "setup": {"complete": false, "accessibility": false, "screen_recording": true, "test_capture": false},
-                       "permissions": {"accessibility": false, "screen_recording": true}, "version": "0.1.102"});
+                       "permissions": {"accessibility": false, "screen_recording": true}, "version": "0.1.103"});
         let t = render("status", &d);
         assert!(t.starts_with("state: setup needed\n"), "{t}");
         assert!(t.contains("setup: incomplete (accessibility missing, test capture not done)"), "{t}");
         let done = json!({"state": "disabled", "setup": {"complete": true}});
         let t = render("status", &done);
         assert!(t.contains("state: disabled") && t.contains("setup: complete"), "{t}");
+    }
+
+    #[test]
+    fn ui_without_windows_prints_note_first() {
+        let d = json!({"app": {"name": "TextEdit", "bundle_id": "com.apple.TextEdit", "pid": 42},
+                       "windows": 0, "note": "TextEdit has no open windows; showing the app and its menu bar",
+                       "elements": [{"id": "0", "depth": 0, "role": "AXApplication", "title": "TextEdit"},
+                                    {"id": "0.0", "depth": 1, "role": "AXMenuBar"}],
+                       "truncated": false});
+        let t = render("ui", &d);
+        let lines: Vec<&str> = t.lines().collect();
+        assert_eq!(lines[0], "note: TextEdit has no open windows; showing the app and its menu bar");
+        assert_eq!(lines[1], "app: TextEdit (com.apple.TextEdit, pid 42)");
+        assert_eq!(lines[2], "0 AXApplication \"TextEdit\"");
+        assert_eq!(lines[3], "  0.0 AXMenuBar");
+        let with_window = json!({"app": {"name": "TextEdit", "pid": 42}, "windows": 1, "elements": []});
+        assert!(!render("ui", &with_window).contains("note:"));
+    }
+
+    #[test]
+    fn screenshot_line_has_origin_and_scale() {
+        let d = json!({"path": "/tmp/a.png", "width": 416, "height": 316, "origin": {"x": 92, "y": 192},
+                       "scale": 1, "pixels_per_point": 1, "display": 0, "cropped": true, "app": "TextEdit"});
+        assert_eq!(render("screenshot", &d), "/tmp/a.png 416x316 origin 92,192 scale 1");
+        let d = json!({"path": "/tmp/b.png", "width": 800, "height": 520, "origin": {"x": -1920, "y": 0}, "scale": 0.5208333});
+        assert_eq!(render("screenshot", &d), "/tmp/b.png 800x520 origin -1920,0 scale 0.52");
+        // An app older than 0.1.103 sends pixels_per_point only.
+        let d = json!({"path": "/tmp/c.png", "width": 3024, "height": 1964, "origin": {"x": 0, "y": 0}, "pixels_per_point": 2.0});
+        assert_eq!(render("screenshot", &d), "/tmp/c.png 3024x1964 origin 0,0 scale 2");
+        assert_eq!(render("screenshot", &json!({"path": "/tmp/d.png", "width": 1, "height": 1})), "/tmp/d.png 1x1");
     }
 }

@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import ImageIO
+import MacintoGeometry
 import ScreenCaptureKit
 import UniformTypeIdentifiers
 
@@ -57,6 +58,20 @@ enum Capture {
 
     /// Build a content filter for display N, optionally restricted to one app, excluding Macinto itself.
     static func filter(displayIndex: Int, appName: String?) async throws -> (SCContentFilter, DisplayInfo, SCDisplay) {
+        let t = try await target(displayIndex: displayIndex, appName: appName)
+        return (t.filter, t.info, t.display)
+    }
+
+    struct Target {
+        let filter: SCContentFilter
+        let info: DisplayInfo
+        let display: SCDisplay
+        /// With an app: its display name and the frames (global points) of its on-screen windows.
+        let appName: String?
+        let windowFrames: [CGRect]
+    }
+
+    static func target(displayIndex: Int, appName: String?) async throws -> Target {
         let infos = displays()
         guard displayIndex >= 0 && displayIndex < infos.count else {
             throw Failure(message: "no display \(displayIndex) (have 0...\(infos.count - 1); see 'macinto.sh status')")
@@ -68,12 +83,22 @@ enum Capture {
         }
         if let appName {
             guard let running = Apps.find(appName) else { throw Failure(message: "no running app matches '\(appName)'") }
-            let apps = content.applications.filter { $0.processID == running.processIdentifier }
-            guard !apps.isEmpty else { throw Failure(message: "'\(appName)' has no capturable windows") }
-            return (SCContentFilter(display: display, including: apps, exceptingWindows: []), info, display)
+            let name = running.localizedName ?? appName
+            let pid = running.processIdentifier
+            // Status-bar items are windows too; leave them out so a menu bar extra doesn't stretch the crop.
+            let statusLevel = Int(CGWindowLevelForKey(.statusWindow))
+            let frames = content.windows
+                .filter { $0.owningApplication?.processID == pid && $0.isOnScreen && $0.windowLayer != statusLevel }
+                .map(\.frame)
+                .filter { $0.width > 1 && $0.height > 1 }
+            let apps = content.applications.filter { $0.processID == pid }
+            guard !apps.isEmpty, !frames.isEmpty else { throw Failure(message: "\(name) has no visible windows to capture") }
+            return Target(filter: SCContentFilter(display: display, including: apps, exceptingWindows: []),
+                          info: info, display: display, appName: name, windowFrames: frames)
         }
         let me = content.applications.filter { $0.processID == getpid() }
-        return (SCContentFilter(display: display, excludingApplications: me, exceptingWindows: []), info, display)
+        return Target(filter: SCContentFilter(display: display, excludingApplications: me, exceptingWindows: []),
+                      info: info, display: display, appName: nil, windowFrames: [])
     }
 
     static func newCaptureURL(ext: String) throws -> URL {
@@ -101,21 +126,35 @@ enum Capture {
         }
     }
 
-    /// Capture a PNG. By default it is scaled to points so image pixels == click coordinates.
-    /// `maxWidth` > 0 scales the image down (keeping aspect) so it is at most that many pixels wide.
+    /// Capture a PNG. By default it is scaled to points so image pixels == click coordinates
+    /// (offset by `origin`). With an app, the image is cropped to the union of that app's windows on
+    /// the display plus a small margin. `maxWidth` > 0 scales the image down (keeping aspect) so it
+    /// is at most that many pixels wide. Pixel (px, py) is clicked at origin + (px, py) / scale.
     static func screenshot(displayIndex: Int, appName: String?, nativeResolution: Bool, maxWidth: Int) async throws -> JSON {
         try requirePermission()
-        let (filter, info, _) = try await filter(displayIndex: displayIndex, appName: appName)
+        let t = try await target(displayIndex: displayIndex, appName: appName)
+        let info = t.info
+        var rect = info.frame
+        if let name = t.appName {
+            guard let crop = CaptureGeometry.cropRect(windows: t.windowFrames, display: info.frame) else {
+                throw Failure(message: "\(name) has no visible windows to capture on display \(displayIndex) (try --display)")
+            }
+            rect = crop
+        }
+        let scale = CaptureGeometry.scale(width: rect.width, native: nativeResolution, displayScale: info.scale, maxWidth: maxWidth)
+        let size = CaptureGeometry.pixelSize(rect, scale: scale)
         let config = SCStreamConfiguration()
-        var scale = nativeResolution ? info.scale : 1
-        if maxWidth > 0, info.frame.width * scale > CGFloat(maxWidth) { scale = CGFloat(maxWidth) / info.frame.width }
-        config.width = Int(info.frame.width * scale)
-        config.height = Int(info.frame.height * scale)
+        if rect != info.frame {
+            // sourceRect is in the display's own point space (top-left origin).
+            config.sourceRect = rect.offsetBy(dx: -info.frame.minX, dy: -info.frame.minY)
+        }
+        config.width = size.width
+        config.height = size.height
         config.showsCursor = true
         config.capturesAudio = false
         let image: CGImage
         do {
-            image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            image = try await SCScreenshotManager.captureImage(contentFilter: t.filter, configuration: config)
         } catch {
             throw Failure(message: "screenshot failed: \(error.localizedDescription)")
         }
@@ -125,15 +164,22 @@ enum Capture {
         }
         CGImageDestinationAddImage(dest, image, nil)
         guard CGImageDestinationFinalize(dest) else { throw Failure(message: "could not write \(url.path)") }
-        return [
+        // Image pixels per point, from the image actually returned.
+        let actual = CGFloat(image.width) / max(1, rect.width)
+        var o: [String: JSON] = [
             "path": .string(url.path),
             "width": .int(image.width),
             "height": .int(image.height),
-            "origin": ["x": .num(info.frame.minX), "y": .num(info.frame.minY)],
+            // Global top-left points of the image's top-left pixel. Click (origin.x + px/scale, origin.y + py/scale).
+            "origin": ["x": .num(rect.minX), "y": .num(rect.minY)],
+            "scale": .num(actual),
             "display": .int(displayIndex),
-            // Image pixels per point. 1 means pixel coordinates are click coordinates (offset by origin).
-            "pixels_per_point": .num(CGFloat(image.width) / max(1, info.frame.width)),
+            "cropped": .bool(rect != info.frame),
+            // Older name for scale.
+            "pixels_per_point": .num(actual),
         ]
+        if let name = t.appName { o["app"] = .string(name) }
+        return .object(o)
     }
 }
 

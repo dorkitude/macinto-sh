@@ -23,7 +23,9 @@ it.
 
 Coordinates are global points with the origin at the top-left of the main
 display. Screenshots are scaled to points by default, so a pixel at (x, y) in a
-screenshot of display 0 is clicked with `macinto.sh click x y`.";
+screenshot of display 0 is clicked with `macinto.sh click x y`. Other displays
+and --app crops report an origin: pixel (px, py) is clicked at
+(origin.x + px/scale, origin.y + py/scale).";
 
 const AFTER_HELP: &str = "\
 Exit codes: 0 ok, 1 error, 2 usage error.
@@ -123,6 +125,10 @@ pub enum Command {
 
     // ---- UI tree
     /// Dump the accessibility tree of an app's focused window, with element ids
+    ///
+    /// Dumps the app's focused window (or its front window). If the app has no windows, it dumps
+    /// the application element and its menu bar instead and prints a note saying so; the JSON
+    /// result has "windows" (the app's window count) and, in that case, "note".
     #[command(display_order = 30)]
     Ui(UiArgs),
     /// Perform AXPress on an element (ids come from 'ui')
@@ -137,6 +143,12 @@ pub enum Command {
 
     // ---- Capture
     /// Save a PNG of a display (default ./macinto-YYYYmmdd-HHMMSS.png)
+    ///
+    /// The image is in points by default (--native or --max-width change the scale). With --app it
+    /// is cropped to that app's windows on the display, plus an 8 pt margin. The output gives the
+    /// image's origin in global points and its scale (pixels per point): pixel (px, py) is clicked
+    /// at (origin.x + px/scale, origin.y + py/scale). A full screenshot of display 0 has origin 0,0
+    /// and scale 1, so pixels are click coordinates.
     #[command(display_order = 40, visible_alias = "image")]
     Screenshot(ScreenshotArgs),
     /// Screen recording: start, stop, status
@@ -280,7 +292,7 @@ pub struct ScreenshotArgs {
     /// Display index from 'screen list'
     #[arg(long, default_value_t = 0, value_name = "N")]
     pub display: u32,
-    /// Keep only this app's windows
+    /// Only this app's windows, cropped to them (error if it has none on screen)
     #[arg(long, value_name = "APP")]
     pub app: Option<String>,
     /// Full Retina resolution instead of points

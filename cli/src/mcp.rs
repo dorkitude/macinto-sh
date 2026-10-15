@@ -94,8 +94,10 @@ pub fn tools() -> Vec<Tool> {
         t("apps", "Running apps", "List running regular apps with pid, bundle id, name and which one is frontmost.", vec![], true),
         t("location", "Pointer location", "Current mouse position in global points.", vec![], true),
         t("ui", "UI tree",
-          "Dump the accessibility tree of an app's focused window: one element per entry with an id, role, title, \
-           value and frame in global points. Ids are index paths like 0.3.1, re-resolved on every call, so call ui \
+          "Dump the accessibility tree of an app's focused window (or its front window): one element per entry with \
+           an id, role, title, value and frame in global points. If the app has no windows, it dumps the application \
+           element and its menu bar instead (menu items can be pressed) and says so in a note; the result's windows \
+           field is the app's window count. Ids are index paths like 0.3.1, re-resolved on every call, so call ui \
            again after the UI changes. Use the ids with press, focus and set_value. Needs Accessibility.",
           vec![p("app", String, false, APP_PARAM), p("depth", Integer, false, "Maximum depth below the window (default 12)")], true),
         t("press", "Press element", "Perform AXPress (like a click) on an element id from ui. Needs Accessibility.",
@@ -105,12 +107,14 @@ pub fn tools() -> Vec<Tool> {
         t("set_value", "Set element value", "Set the value of an element id from ui, e.g. a text field. Needs Accessibility.",
           vec![p("id", String, true, "Element id from ui"), p("value", String, true, "New value"), p("app", String, false, APP_PARAM)], false),
         t("screenshot", "Screenshot",
-          "Capture a display as PNG and return it inline. By default the image is scaled to points, so a pixel (x, y) \
-           in a screenshot of display 0 is clicked at (x, y); for other displays add the display origin. With max_width \
-           or native the scale changes: divide pixel coordinates by pixels_per_point (in the result) first. \
-           The file stays in Macinto.sh's captures folder unless path is given. Needs Screen Recording.",
+          "Capture a display as PNG and return it inline. With app, the image is cropped to that app's windows on the \
+           display plus an 8 pt margin (error if it has no visible windows). The result gives origin (global points of \
+           the image's top-left pixel) and scale (image pixels per point; 1 by default, other values with native or \
+           max_width): pixel (px, py) is clicked at (origin.x + px/scale, origin.y + py/scale). A full screenshot of \
+           display 0 has origin 0,0 and scale 1, so pixels are click coordinates. The file stays in Macinto.sh's \
+           captures folder unless path is given. Needs Screen Recording.",
           vec![p("display", Integer, false, "Display index from status (default 0, the main display)"),
-               p("app", String, false, "Capture only this app's windows"),
+               p("app", String, false, "Capture only this app's windows, cropped to them"),
                p("max_width", Integer, false, "Scale the image down to at most this many pixels wide (keeps aspect ratio)"),
                p("native", Boolean, false, "Full Retina resolution instead of points"),
                p("path", String, false, "Absolute .png path to save the file to"),
@@ -255,6 +259,23 @@ pub fn to_action(name: &str, args: &Map<String, Value>) -> Result<Action> {
     })
 }
 
+/// Text item next to the inline screenshot: where it is saved and how pixels map to clicks.
+fn screenshot_text(d: &Value) -> String {
+    let (ox, oy) = (output::num(&d["origin"]["x"]), output::num(&d["origin"]["y"]));
+    let scale = output::scale(d).unwrap_or_else(|| "1".into());
+    let what = match d["app"].as_str() {
+        Some(app) if d["cropped"].as_bool() == Some(true) => format!("{app}'s windows on display {}", output::num(&d["display"])),
+        Some(app) => format!("{app} on display {}", output::num(&d["display"])),
+        None => format!("display {}", output::num(&d["display"])),
+    };
+    format!(
+        "saved {} ({}x{} px, {what}, origin {ox},{oy}, scale {scale}). Pixel (px, py) is clicked at ({ox} + px/{scale}, {oy} + py/{scale}).",
+        d["path"].as_str().unwrap_or("?"),
+        output::num(&d["width"]),
+        output::num(&d["height"]),
+    )
+}
+
 fn text(t: impl Into<String>) -> Value {
     json!({"type": "text", "text": t.into()})
 }
@@ -274,16 +295,7 @@ pub fn call_tool(client: &Client, name: &str, args: &Map<String, Value>) -> Valu
                     Some(Ok(png)) => content.push(json!({"type": "image", "mimeType": "image/png", "data": base64(&png)})),
                     _ => content.push(text("(could not read the screenshot file back)")),
                 }
-                content.push(text(format!(
-                    "saved {} ({}x{} px, display {} origin {},{}, {} pixels per point)",
-                    data["path"].as_str().unwrap_or("?"),
-                    output::num(&data["width"]),
-                    output::num(&data["height"]),
-                    output::num(&data["display"]),
-                    output::num(&data["origin"]["x"]),
-                    output::num(&data["origin"]["y"]),
-                    data["pixels_per_point"].as_f64().map(|f| format!("{f:.2}")).unwrap_or("?".into()),
-                )));
+                content.push(text(screenshot_text(&data)));
             } else {
                 let mut t = output::render(&action.kind(), &data);
                 if t.is_empty() {
@@ -517,5 +529,59 @@ mod tests {
         assert!(call["result"]["content"][0]["text"].as_str().unwrap().contains("macinto.sh setup"));
         let bad_tool = handle(&c, &json!({"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "enable"}})).unwrap();
         assert_eq!(bad_tool["error"]["code"], -32602);
+    }
+
+    #[test]
+    fn ui_and_screenshot_descriptions() {
+        let all = tools();
+        let ui = all.iter().find(|t| t.name == "ui").unwrap();
+        assert!(ui.desc.contains("focused window (or its front window)"), "{}", ui.desc);
+        assert!(ui.desc.contains("no windows, it dumps the application element and its menu bar"), "{}", ui.desc);
+        let shot = all.iter().find(|t| t.name == "screenshot").unwrap();
+        assert!(shot.desc.contains("cropped to that app's windows"), "{}", shot.desc);
+        assert!(shot.desc.contains("(origin.x + px/scale, origin.y + py/scale)"), "{}", shot.desc);
+    }
+
+    #[test]
+    fn screenshot_tool_reports_origin_and_scale() {
+        let png = std::env::temp_dir().join(format!("macinto-{}-mcp-shot.png", std::process::id()));
+        std::fs::write(&png, b"\x89PNG fake").unwrap();
+        let reply = json!({"ok": true, "data": {"path": png.to_string_lossy(), "width": 832, "height": 632,
+                           "origin": {"x": 92, "y": 192}, "scale": 2, "pixels_per_point": 2, "display": 0,
+                           "cropped": true, "app": "TextEdit"}});
+        let sock = crate::client::tests::fake_app("mcp-shot", format!("{reply}\n"));
+        let c = Client::new(Some(sock.clone()));
+        let r = call_tool(&c, "screenshot", &args(json!({"app": "TextEdit", "native": true})));
+        assert_eq!(r["isError"], false);
+        assert_eq!(r["content"][0]["type"], "image");
+        assert_eq!(r["content"][0]["data"], base64(b"\x89PNG fake"));
+        assert_eq!(
+            r["content"][1]["text"],
+            format!("saved {} (832x632 px, TextEdit's windows on display 0, origin 92,192, scale 2). \
+                     Pixel (px, py) is clicked at (92 + px/2, 192 + py/2).", png.display())
+        );
+        assert_eq!(r["structuredContent"]["origin"], json!({"x": 92, "y": 192}));
+        assert_eq!(r["structuredContent"]["scale"], 2);
+        // Full display: origin and scale are still there.
+        let full = json!({"path": "/x.png", "width": 1512, "height": 982, "origin": {"x": 0, "y": 0}, "scale": 1, "display": 0, "cropped": false});
+        assert_eq!(screenshot_text(&full),
+                   "saved /x.png (1512x982 px, display 0, origin 0,0, scale 1). Pixel (px, py) is clicked at (0 + px/1, 0 + py/1).");
+        let _ = std::fs::remove_file(sock);
+        let _ = std::fs::remove_file(png);
+    }
+
+    #[test]
+    fn ui_tool_without_windows_says_so() {
+        let reply = json!({"ok": true, "data": {"app": {"name": "TextEdit", "bundle_id": "com.apple.TextEdit", "pid": 7},
+                           "windows": 0, "note": "TextEdit has no open windows; showing the app and its menu bar",
+                           "elements": [{"id": "0", "depth": 0, "role": "AXApplication", "title": "TextEdit"}],
+                           "truncated": false, "max_elements": 3000}});
+        let sock = crate::client::tests::fake_app("mcp-ui", format!("{reply}\n"));
+        let r = call_tool(&Client::new(Some(sock.clone())), "ui", &args(json!({"app": "TextEdit", "depth": 1})));
+        assert_eq!(r["isError"], false);
+        let t = r["content"][0]["text"].as_str().unwrap();
+        assert!(t.starts_with("note: TextEdit has no open windows; showing the app and its menu bar\napp: TextEdit"), "{t}");
+        assert_eq!(r["structuredContent"]["windows"], 0);
+        let _ = std::fs::remove_file(sock);
     }
 }
