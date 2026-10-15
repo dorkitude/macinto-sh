@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>Macinto</string>
+	<key>CFBundleIdentifier</key>
+	<string>sh.macinto.app</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Macinto</string>
+	<key>CFBundleDisplayName</key>
+	<string>Macinto</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>__VERSION__</string>
+	<key>CFBundleVersion</key>
+	<string>__VERSION__</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.developer-tools</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSAccessibilityUsageDescription</key>
+	<string>Macinto posts mouse and keyboard events and reads UI elements on behalf of the macinto.sh command line tool, only while you have enabled it from the menu bar.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Macinto takes screenshots and screen recordings on behalf of the macinto.sh command line tool, only while you have enabled it from the menu bar.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Kyle Wild. MIT License.</string>
+</dict>
+</plist>
