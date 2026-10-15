@@ -9,22 +9,32 @@ enum Permissions {
     static var accessibility: Bool { AXIsProcessTrusted() }
     static var screenRecording: Bool { CGPreflightScreenCaptureAccess() }
 
-    static func promptAccessibility() {
-        ActionLog.shared.write(event: "setup: accessibility button clicked")
-        let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(opts)
-        openSettings("Privacy_Accessibility")
+    /// First click: macOS's own prompt (it has an "Open System Settings" button), nothing else.
+    /// Later clicks: just open the pane. Never both at once.
+    static func promptAccessibility(firstAttempt: Bool) {
+        ActionLog.shared.write(event: "setup: accessibility button clicked (\(firstAttempt ? "prompt" : "open settings"))")
+        if firstAttempt {
+            let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            _ = AXIsProcessTrustedWithOptions(opts)
+        } else {
+            openSettings("Privacy_Accessibility")
+        }
     }
 
-    static func promptScreenRecording() {
-        ActionLog.shared.write(event: "setup: screen recording button clicked")
-        // On current macOS, CGRequestScreenCaptureAccess alone doesn't reliably add the app to the
-        // Screen & System Audio Recording list; a real ScreenCaptureKit request does. Make one so the
-        // app shows up there (and macOS shows its prompt), then open the pane.
-        _ = CGRequestScreenCaptureAccess()
+    /// First click: one ScreenCaptureKit request. That is what adds Macinto.sh to the Screen & System
+    /// Audio Recording list on current macOS, and macOS shows its own prompt with an "Open System
+    /// Settings" button. (ScreenCaptureKit reports "declined" right away while that prompt is still
+    /// up, so the result is only logged.) Later clicks: just open the pane. Never both at once.
+    @MainActor static func promptScreenRecording(firstAttempt: Bool, done: @escaping @MainActor () -> Void) {
+        ActionLog.shared.write(event: "setup: screen recording button clicked (\(firstAttempt ? "request" : "open settings"))")
+        guard firstAttempt else {
+            openSettings("Privacy_ScreenCapture")
+            done()
+            return
+        }
         SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, error in
-            ActionLog.shared.write(event: "setup: ScreenCaptureKit registration request: \(error.map { "\($0.localizedDescription)" } ?? "ok")")
-            DispatchQueue.main.async { openSettings("Privacy_ScreenCapture") }
+            ActionLog.shared.write(event: "setup: ScreenCaptureKit request returned: \(error.map { $0.localizedDescription } ?? "ok")")
+            Task { @MainActor in done() }
         }
     }
 

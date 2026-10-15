@@ -34,7 +34,30 @@ final class AppState: ObservableObject {
     enum Screen: Equatable { case onboarding, tutorial, control }
     @Published private(set) var screen: Screen = .onboarding
     /// Set once the user clicks the Screen Recording button; shows the Relaunch button.
-    @Published var screenRecordingRequested = false
+    /// Persisted, so after a relaunch a click opens System Settings instead of prompting again.
+    @Published var screenRecordingRequested = UserDefaults.standard.bool(forKey: "screenRecordingRequested") {
+        didSet { UserDefaults.standard.set(screenRecordingRequested, forKey: "screenRecordingRequested") }
+    }
+    /// Set once the user clicks the Accessibility button (macOS prompts only the first time).
+    @Published var accessibilityRequested = UserDefaults.standard.bool(forKey: "accessibilityRequested") {
+        didSet { UserDefaults.standard.set(accessibilityRequested, forKey: "accessibilityRequested") }
+    }
+    /// A permission request is waiting on macOS; further clicks are ignored until it returns.
+    var setupRequestInFlight = false
+    /// When the setup screen last appeared. Clicks in the first second are ignored, so a click
+    /// meant for something else (e.g. a double-click on Relaunch) can't land on a permission button.
+    var setupShownAt = Date.distantPast
+    private var lastSetupClick = Date.distantPast
+
+    func setupClickAllowed() -> Bool {
+        let now = Date()
+        guard now.timeIntervalSince(setupShownAt) >= 1.0, now.timeIntervalSince(lastSetupClick) >= 1.0 else {
+            ActionLog.shared.write(event: "setup: click ignored (too soon)")
+            return false
+        }
+        lastSetupClick = now
+        return true
+    }
 
     var permissionsOK: Bool { accessibilityGranted && screenRecordingGranted }
 

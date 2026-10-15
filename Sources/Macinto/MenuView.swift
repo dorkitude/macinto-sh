@@ -50,14 +50,19 @@ struct OnboardingView: View {
             PermissionButton(title: "Accessibility", detail: "click, type, read UI", symbol: "cursorarrow.click.2",
                              accent: TN.blue, granted: state.accessibilityGranted) {
                 if state.isPreview { ActionLog.shared.write(event: "DEBUG: preview: Accessibility button ignored"); return }
-                Permissions.promptAccessibility()
+                guard state.setupClickAllowed() else { return }
+                Permissions.promptAccessibility(firstAttempt: !state.accessibilityRequested)
+                state.accessibilityRequested = true
             }
             PermissionButton(title: "Screen Recording", detail: "screenshots, recordings",
                              symbol: "rectangle.dashed.badge.record", accent: TN.purple,
                              granted: state.screenRecordingGranted) {
                 if state.isPreview { ActionLog.shared.write(event: "DEBUG: preview: Screen Recording button ignored"); return }
+                guard state.setupClickAllowed(), !state.setupRequestInFlight else { return }
+                let first = !state.screenRecordingRequested
                 state.screenRecordingRequested = true
-                Permissions.promptScreenRecording()
+                state.setupRequestInFlight = true
+                Permissions.promptScreenRecording(firstAttempt: first) { state.setupRequestInFlight = false }
             }
 
             if state.permissionsOK {
@@ -85,6 +90,7 @@ struct OnboardingView: View {
         }
         .padding(20)
         .frame(width: 400)
+        .onAppear { state.setupShownAt = Date() }
     }
 }
 
