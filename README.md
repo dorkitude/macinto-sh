@@ -22,27 +22,21 @@ terminal, or from Codex/Claude/etc, you have to enable `Accessibility` and
 So basically I made `macinto.sh` to have a more secure way to not have the aesthetic experience
 of using GUIs.  Maybe it'll be useful in some other ways to some other people too :)
 
-## How it works
+## The Design
 
 Macinto.sh consists of two parts:
-  - `Macinto.sh.app` is a menu bar app that holds the Accessibility and Screen Recording permissions.
-  - `macinto.sh` is a command line tool (and MCP server) that asks the app to click, type, press keys,
-    read the UI tree, take screenshots and record the screen.
+  - `Macinto.sh.app` (Swift) is a menu bar app that holds the Accessibility and Screen Recording permissions.
+  - `macinto.sh` (Rust) is a command line tool and MCP server that commands the Swift app to click, type, press keys,
+    read the UI tree, take screenshots, and record the screen.
 
-Agents and scripts call `macinto.sh` or use the MCP server.
-Only the `.app` needs to be trusted by macOS.
+Agents and scripts can call `macinto.sh` or use the MCP server, but only the `.app` needs to be trusted by macOS.
 
-So you don't have to blanket trust your terminal emulator.
-The app does nothing until a person enables it from the menu bar, and enabling has a 30-minute default,
-in case you forget to turn it off.  So the MacOS permission is permanent, but the app itself blocks all
-automation activity once the timer runs out.
+So you don't have to grant blanket trust to your terminal emulator or ChatGPT or whatever. The app does nothing until a person enables it from the menu bar, and enabling has a 30-minute default, in case you forget to turn it off.  So the MacOS permission is permanent, but the app itself blocks all automation activity once the timer runs out (or if it's not running, or if you click "Disable").
 
-It also makes a bright red apple flash in the corner of your screen, and on your menu bar, so you know
-you're exposed.  It also logs all automation activity that has passed through it.
+It also paints a bright red, blinking 🍎 apple in the corner of your screen, and another on your menu bar, so you know
+you're exposed.  Beyond that, it logs all automation activity that has passed through it into a log file.
 
-You _can_ turn it on indefinitely if you choose to, but that isn't the default.
-
-I hope some people find it useful :)
+You _can_ enable it indefinitely if you choose to, but that isn't the default.  I only do that for my [agent's](https://strangerloops.com) private Mac Mini, because hey, he's got root on that thing anyway.
 
 ## Install
 
@@ -72,12 +66,12 @@ extension and reports that it can't find the application. Use
 `macinto.sh setup`, `open /Applications/Macinto.sh.app` or
 `open -b com.dorkitude.macinto.sh`.
 
-The app is signed with a Developer ID and notarized by Apple. The CLI is a
+The app is signed with my Developer ID and notarized by Apple. The CLI is a
 single native binary inside the app bundle (`Contents/Helpers/macinto.sh`).
 
 ## First run
 
-1. Run `macinto.sh setup`. It starts Macinto.sh if it isn't running, then
+1. Run `macinto.sh setup`. It starts Macinto.sh.app if it isn't running, then
    brings its window to the front:
 
    ```
