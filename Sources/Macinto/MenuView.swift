@@ -294,9 +294,7 @@ struct ControlView: View {
             Toggle(isOn: $state.showOverlay) {
                 Text("Show the red apple while enabled").font(.system(size: 12)).foregroundStyle(TN.text)
             }
-            .toggleStyle(.switch)
-            .tint(TN.red)
-            .controlSize(.small)
+            .toggleStyle(TNSwitchStyle())
             if !state.showOverlay {
                 if statusItemHidden() {
                     Text("Your menu bar icon is hidden by macOS, so nothing on screen will show that Macinto.sh is on.")

@@ -170,3 +170,30 @@ struct PulsingApple: View {
             }
     }
 }
+
+/// Tokyo Night switch drawn in SwiftUI (renders the same on screen and in offscreen snapshots).
+struct TNSwitchStyle: ToggleStyle {
+    var on: Color = TN.red
+
+    func makeBody(configuration: Configuration) -> some View {
+        Button { configuration.isOn.toggle() } label: {
+            HStack(spacing: 10) {
+                configuration.label
+                Spacer(minLength: 8)
+                ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+                    Capsule()
+                        .fill(configuration.isOn ? on.opacity(0.85) : TN.borderHi)
+                        .frame(width: 34, height: 20)
+                    Circle()
+                        .fill(TN.text)
+                        .frame(width: 16, height: 16)
+                        .padding(2)
+                        .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
+                }
+                .animation(.easeOut(duration: 0.15), value: configuration.isOn)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
