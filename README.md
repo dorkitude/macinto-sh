@@ -12,11 +12,12 @@ So I like to make AI do that part. I'm a big fan of Chrome automation,
 Playwright, etc, because like, trying to cancel a "Subscribe & Save" on Amazon.com
 feels like a freaking escape room, and they keep moving stuff around on me.
 
-But sometimes I want my agent to control my _entire Mac_.  But to do that from a
-terminal, or from Codex/Claude, you have to enable `Accessibility` and
-`Screen & System Audio Recording` app-wide, which is tantamount to granting blanket
-"hack me" permissions to a nondeterministic executor, permanently.  Like an opt-in
-[Back Orifice](https://en.wikipedia.org/wiki/Back_Orifice).  That didn't feel very safe.
+Beyond that, sometimes a browser isn't enough, and  I want my agent to control my _entire Mac_.  There are so many
+horrid GUIs that I rely on, and I'd rather not look at them.  But to control a Mac from the sweet sweet
+terminal, or from Codex/Claude/etc, you have to enable `Accessibility` and
+`Screen & System Audio Recording` **app-wide**, which is tantamount to granting blanket
+"hack me" permissions to a nondeterministic executor, _permanently_.  Like an opt-in
+[Back Orifice](https://en.wikipedia.org/wiki/Back_Orifice).  And that didn't feel very safe to me.
 
 So I made `macinto.sh` to have a more secure way to not have the aesthetic experience
 of using GUIs.
