@@ -6,13 +6,13 @@ struct PeerInfo {
     struct Proc { let pid: pid_t; let name: String }
 
     let pid: pid_t
-    /// The peer process and up to three distinct ancestors, nearest first (e.g. nc, macinto.sh, claude, zsh).
+    /// The peer process and up to three distinct ancestors, nearest first (e.g. macinto.sh, zsh, claude).
     let chain: [Proc]
 
     /// Process names that are plumbing rather than the real caller.
-    private static let plumbing: Set<String> = ["nc", "macinto.sh", "bash", "sh", "zsh", "env"]
+    private static let plumbing: Set<String> = ["nc", "macinto.sh", "macinto.sh mcp", "bash", "sh", "zsh", "env"]
 
-    /// The first ancestor that is not nc/bash/macinto.sh, for the menu's action list.
+    /// The first ancestor that is not the CLI or a shell, for the menu's action list.
     var caller: Proc {
         chain.first { !Self.plumbing.contains($0.name) } ?? chain.last ?? Proc(pid: pid, name: "?")
     }
@@ -57,6 +57,8 @@ struct PeerInfo {
         var buf = [CChar](repeating: 0, count: 256)
         let n = proc_name(pid, &buf, UInt32(buf.count))
         let name = n > 0 ? String(cString: buf) : "?"
+        // The CLI running as an MCP server: show it as "macinto.sh mcp" so MCP traffic stands out in the log.
+        if name == "macinto.sh", let args = arguments(pid), isMCP(Array(args.dropFirst())) { return "macinto.sh mcp" }
         let interpreters: Set<String> = ["bash", "sh", "zsh", "dash", "python", "python3", "node", "ruby", "perl"]
         if interpreters.contains(name), let args = arguments(pid), args.count >= 2 {
             if let script = args.dropFirst().first(where: { !$0.hasPrefix("-") }) {
@@ -65,6 +67,18 @@ struct PeerInfo {
             }
         }
         return name
+    }
+
+    /// True if the CLI's subcommand is `mcp` (skipping global flags like --dev, --json, --socket PATH).
+    static func isMCP(_ args: [String]) -> Bool {
+        var i = 0
+        while i < args.count {
+            let a = args[i]
+            if a == "--socket" { i += 2; continue }
+            if a.hasPrefix("-") { i += 1; continue }
+            return a == "mcp"
+        }
+        return false
     }
 
     /// argv of another process via KERN_PROCARGS2 (same user only).

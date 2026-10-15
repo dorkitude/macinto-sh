@@ -18,12 +18,14 @@ enum Apps {
             ?? regular.first { $0.bundleURL?.deletingPathExtension().lastPathComponent.lowercased() == q }
     }
 
-    static func listLines() -> [String] {
+    static func json(_ a: NSRunningApplication, frontmost: Bool) -> JSON {
+        ["pid": .int(Int(a.processIdentifier)), "bundle_id": .str(a.bundleIdentifier),
+         "name": .str(a.localizedName), "frontmost": .bool(frontmost)]
+    }
+
+    static func list() -> [JSON] {
         let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        return regular.map { a in
-            let mark = a.processIdentifier == front ? "*" : " "
-            return "\(mark) \(a.processIdentifier)\t\(a.bundleIdentifier ?? "-")\t\(a.localizedName ?? "?")"
-        }
+        return regular.map { json($0, frontmost: $0.processIdentifier == front) }
     }
 
     /// Locate an application bundle by bundle id or name.

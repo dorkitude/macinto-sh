@@ -1,11 +1,11 @@
 import Darwin
 import Foundation
 
-/// Line protocol over a Unix domain socket. One request per connection:
-///   request:  `<command> <base64 arg> <base64 arg> ...\n`   ("-" encodes an empty argument)
-///   response: `ok\n<payload lines>` or `error <message>\n`
+/// Newline-delimited JSON over a Unix domain socket. One request per connection:
+///   request:  `{"cmd": "click", "args": {"x": 10, "y": 20}}\n`
+///   response: `{"ok": true, "data": {...}}\n` or `{"ok": false, "code": "...", "error": "..."}\n`
 final class SocketServer: @unchecked Sendable {
-    typealias Handler = @Sendable (_ command: String, _ args: [String], _ peer: PeerInfo) async -> Response
+    typealias Handler = @Sendable (_ request: Request, _ peer: PeerInfo) async -> Response
 
     private let path: String
     private let handler: Handler
@@ -21,7 +21,7 @@ final class SocketServer: @unchecked Sendable {
         case alreadyRunning, sys(String)
         var description: String {
             switch self {
-            case .alreadyRunning: return "another Macinto instance is already listening on the socket"
+            case .alreadyRunning: return "another Macinto.sh instance is already listening on the socket"
             case .sys(let s): return s
             }
         }
@@ -94,36 +94,29 @@ final class SocketServer: @unchecked Sendable {
         let peer = PeerInfo.of(socket: fd)
 
         guard let line = Self.readLine(fd) else {
-            Self.send(fd, .error("bad request: expected one line terminated by a newline"))
+            Self.send(fd, .error("bad request: expected one JSON object terminated by a newline", code: "bad_request"))
             close(fd)
             return
         }
-        let parts = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-        guard let command = parts.first else {
-            Self.send(fd, .error("bad request: empty command"))
+        let request: Request
+        do {
+            request = try JSONDecoder().decode(Request.self, from: line)
+        } catch {
+            ActionLog.shared.write(pid: peer.pid, chain: peer.chainDescription, command: "(undecodable request)", result: "bad_request")
+            Self.send(fd, .error("bad request: expected {\"cmd\": ..., \"args\": {...}}", code: "bad_request"))
             close(fd)
             return
-        }
-        var args: [String] = []
-        for p in parts.dropFirst() {
-            if p == "-" { args.append(""); continue }
-            guard let d = Data(base64Encoded: p), let s = String(data: d, encoding: .utf8) else {
-                Self.send(fd, .error("bad request: arguments must be base64-encoded UTF-8"))
-                close(fd)
-                return
-            }
-            args.append(s)
         }
 
         let handler = self.handler
         Task.detached {
-            let response = await handler(command, args, peer)
+            let response = await handler(request, peer)
             Self.send(fd, response)
             close(fd)
         }
     }
 
-    private static func readLine(_ fd: Int32) -> String? {
+    private static func readLine(_ fd: Int32) -> Data? {
         var data = Data()
         var buf = [UInt8](repeating: 0, count: 65536)
         while data.count < maxRequestBytes {
@@ -131,14 +124,14 @@ final class SocketServer: @unchecked Sendable {
             if n <= 0 { break }
             data.append(buf, count: n)
             if let nl = data.firstIndex(of: 0x0A) {
-                return String(data: data[data.startIndex..<nl], encoding: .utf8)
+                return Data(data[data.startIndex..<nl])
             }
         }
         return nil
     }
 
     private static func send(_ fd: Int32, _ r: Response) {
-        let bytes = Array(r.serialized.utf8)
+        let bytes = [UInt8](r.serialized)
         var off = 0
         while off < bytes.count {
             let n = bytes[off...].withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
@@ -171,23 +164,4 @@ final class SocketServer: @unchecked Sendable {
             }
         }
     }
-}
-
-struct Response: Sendable {
-    var ok: Bool
-    var message: String
-    var lines: [String]
-
-    static func ok(_ lines: [String] = []) -> Response { Response(ok: true, message: "", lines: lines) }
-    static func error(_ message: String) -> Response { Response(ok: false, message: message, lines: []) }
-
-    var serialized: String {
-        if ok {
-            return (["ok"] + lines).joined(separator: "\n") + "\n"
-        }
-        let msg = message.replacingOccurrences(of: "\n", with: " ")
-        return "error \(msg)\n"
-    }
-
-    var summary: String { ok ? "ok" : "error: \(message)" }
 }

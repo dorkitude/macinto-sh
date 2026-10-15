@@ -19,7 +19,7 @@ struct MenuView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             if statusItemHidden() {
-                Text("macOS is hiding the Macinto menu bar icon because the menu bar is full. Run `open -a Macinto` to bring this window back, or free up menu bar space.")
+                Text("macOS is hiding the \(Paths.displayName) menu bar icon because the menu bar is full. Run `open -a '\(Paths.displayName)'` to bring this window back, or free up menu bar space.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Divider()
@@ -50,10 +50,10 @@ struct MenuView: View {
             Spacer()
             if state.enabled {
                 Button("Disable now") { state.disable(reason: "menu") }
-                    .keyboardShortcut(.defaultAction)
             } else {
+                // Deliberately no keyboard shortcut / default-button binding: enabling takes a click
+                // (or Tab to the button and Space), never a stray Return.
                 Button("Enable for \(durationLabel)") { state.enable(for: state.selectedDuration) }
-                    .keyboardShortcut(.defaultAction)
             }
         }
     }
@@ -122,7 +122,8 @@ struct MenuView: View {
                 ForEach(state.recent) { r in
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(Self.timeFormat.string(from: r.time)).monospacedDigit().foregroundStyle(.secondary)
-                        Text("\(r.caller) (\(r.pid))").lineLimit(1)
+                        // verbatim: a plain Int interpolated into Text is localized ("2,110").
+                        Text(verbatim: "\(r.caller)[\(String(r.pid))]").lineLimit(1)
                         Text(r.command).lineLimit(1).truncationMode(.tail)
                             .foregroundStyle(r.ok ? Color.primary : Color.red)
                     }

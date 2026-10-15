@@ -1,15 +1,17 @@
 import AppKit
 
-/// Symlinks the bundled macinto.sh into /opt/homebrew/bin (if writable) or /usr/local/bin (admin prompt).
+/// Symlinks the bundled CLI (Contents/Helpers/macinto.sh) into /opt/homebrew/bin (if writable)
+/// or /usr/local/bin (admin prompt).
 @MainActor
 enum CLIInstaller {
     static func install() {
-        guard let script = Bundle.main.url(forResource: "macinto", withExtension: "sh") else {
-            alert("macinto.sh is missing from the app bundle.", style: .critical)
+        let script = Paths.bundledCLI
+        guard FileManager.default.isExecutableFile(atPath: script.path) else {
+            alert("macinto.sh is missing from the app bundle (\(script.path)).", style: .critical)
             return
         }
         if Bundle.main.bundlePath.contains("/AppTranslocation/") {
-            alert("Move Macinto.app to /Applications first, then open it from there and try again. (macOS is running it from a temporary read-only location.)", style: .warning)
+            alert("Move Macinto.sh.app to /Applications first, then open it from there and try again. (macOS is running it from a temporary read-only location.)", style: .warning)
             return
         }
         let fm = FileManager.default

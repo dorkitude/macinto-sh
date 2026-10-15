@@ -1,51 +1,16 @@
 import AppKit
 
-/// Parsed command arguments: positionals plus --flags (with or without values).
-struct Args {
-    var positional: [String] = []
-    var flags: [String: String] = [:]
-
-    /// `valued` lists flags that take a value (e.g. --app NAME).
-    init(_ raw: [String], valued: Set<String> = []) throws {
-        var i = 0
-        while i < raw.count {
-            let a = raw[i]
-            if a.hasPrefix("--") && a.count > 2 {
-                let name = String(a.dropFirst(2))
-                if valued.contains(name) {
-                    guard i + 1 < raw.count else { throw Commands.Usage(message: "--\(name) needs a value") }
-                    flags[name] = raw[i + 1]
-                    i += 2
-                    continue
-                }
-                flags[name] = ""
-            } else {
-                positional.append(a)
-            }
-            i += 1
-        }
-    }
-
-    func has(_ f: String) -> Bool { flags[f] != nil }
-
-    func int(_ f: String, default d: Int) throws -> Int {
-        guard let v = flags[f] else { return d }
-        guard let n = Int(v) else { throw Commands.Usage(message: "--\(f) expects an integer, got '\(v)'") }
-        return n
-    }
-}
-
 enum Commands {
-    struct Usage: Error { let message: String }
-
     /// Commands that work while disabled (read-only, no screen or input access).
-    static let allowedWhileDisabled: Set<String> = ["status", "version", "ping"]
+    static let allowedWhileDisabled: Set<String> = ["status", "version", "ping", "keys"]
 
-    static func handle(_ command: String, _ rawArgs: [String], _ peer: PeerInfo) async -> Response {
-        let response = await dispatch(command, rawArgs)
-        let logged = ([command] + rawArgs.map { AXTree.clip($0, 80) }).joined(separator: " ")
+    static func handle(_ request: Request, _ peer: PeerInfo) async -> Response {
+        let args = Args(request.args)
+        let response = await dispatch(request.cmd, args)
+        // `type` text is logged truncated (see README).
+        let logged = ([request.cmd] + (args.raw.isEmpty ? [] : [args.logDescription])).joined(separator: " ")
         ActionLog.shared.write(pid: peer.pid, chain: peer.chainDescription, command: logged, result: response.summary)
-        if command != "status" && command != "ping" {
+        if !["status", "ping", "version", "keys"].contains(request.cmd) {
             let caller = peer.caller
             await MainActor.run {
                 AppState.shared.record(ActionRecord(time: Date(), caller: caller.name, pid: caller.pid,
@@ -55,21 +20,22 @@ enum Commands {
         return response
     }
 
-    private static func dispatch(_ command: String, _ rawArgs: [String]) async -> Response {
+    private static func dispatch(_ command: String, _ args: Args) async -> Response {
         let enabled = await MainActor.run { AppState.shared.enabled }
         if !enabled && !allowedWhileDisabled.contains(command) {
-            return .error("macinto is disabled — enable it from the menu bar")
+            return .error("\(Paths.displayName) is disabled. Enable it from the \(Paths.displayName) menu bar icon (or its control window: open -a '\(Paths.displayName)').",
+                          code: "disabled")
         }
         do {
-            return try await run(command, rawArgs)
-        } catch let e as Usage {
-            return .error("usage: \(e.message)")
+            return .ok(try await run(command, args))
+        } catch let e as CommandError {
+            return .error(e.message, code: e.code, permission: e.permission)
         } catch let e as Input.Failure {
             return .error(e.message)
         } catch let e as AXTree.Failure {
-            return .error(e.message)
+            return .error(e.message, code: "not_found")
         } catch let e as Apps.Failure {
-            return .error(e.message)
+            return .error(e.message, code: "not_found")
         } catch let e as Capture.Failure {
             return .error(e.message)
         } catch {
@@ -78,146 +44,134 @@ enum Commands {
     }
 
     private static func requireAX() throws {
-        guard Permissions.accessibility else { throw Input.Failure(message: Permissions.accessibilityError) }
+        guard Permissions.accessibility else { throw Permissions.missing(.accessibility) }
     }
 
-    private static func point(_ p: [String], _ at: Int, usage: String) throws -> CGPoint {
-        guard p.count >= at + 2, let x = Double(p[at]), let y = Double(p[at + 1]) else { throw Usage(message: usage) }
-        return CGPoint(x: x, y: y)
-    }
-
-    private static func run(_ command: String, _ raw: [String]) async throws -> Response {
+    private static func run(_ command: String, _ a: Args) async throws -> JSON {
         switch command {
         case "ping":
-            return .ok(["pong"])
+            return ["pong": true]
 
         case "version":
-            return .ok([Paths.version])
+            return ["version": .string(Paths.version)]
 
         case "status":
-            return .ok(await statusLines())
+            return await status()
 
         case "click":
-            let a = try Args(raw)
-            let p = try point(a.positional, 0, usage: "click X Y [--right] [--double]")
+            let p = try a.point()
+            let right = try a.optString("button") == "right"
+            let count = try a.int("count", default: 1)
+            guard (1...3).contains(count) else { throw CommandError.usage("'count' must be 1, 2 or 3") }
             try requireAX()
-            try Input.click(at: p, right: a.has("right"), count: a.has("double") ? 2 : 1)
-            return .ok([String(format: "clicked %.0f,%.0f", p.x, p.y)])
+            try Input.click(at: p, right: right, count: count)
+            return ["x": .num(p.x), "y": .num(p.y), "button": right ? "right" : "left", "count": .int(count)]
 
         case "move":
-            let a = try Args(raw)
-            let p = try point(a.positional, 0, usage: "move X Y")
+            let p = try a.point()
             try requireAX()
             try Input.move(to: p)
-            return .ok()
+            return .point(p)
 
         case "drag":
-            let a = try Args(raw)
-            let p1 = try point(a.positional, 0, usage: "drag X1 Y1 X2 Y2")
-            let p2 = try point(a.positional, 2, usage: "drag X1 Y1 X2 Y2")
+            let p1 = try a.point("x1", "y1"), p2 = try a.point("x2", "y2")
             try requireAX()
             try Input.drag(from: p1, to: p2)
-            return .ok()
+            return ["from": .point(p1), "to": .point(p2)]
 
         case "scroll":
-            let a = try Args(raw)
-            guard a.positional.count == 2, let dx = Int32(a.positional[0]), let dy = Int32(a.positional[1]) else {
-                throw Usage(message: "scroll DX DY (lines; positive DY scrolls up, negative scrolls down)")
-            }
+            let dx = try a.int("dx", default: 0), dy = try a.int("dy", default: 0)
+            guard abs(dx) <= 10_000, abs(dy) <= 10_000 else { throw CommandError.usage("scroll amounts must be within ±10000 lines") }
             try requireAX()
-            try Input.scroll(dx: dx, dy: dy)
-            return .ok()
+            try Input.scroll(dx: Int32(dx), dy: Int32(dy))
+            return ["dx": .int(dx), "dy": .int(dy)]
 
         case "location":
-            let p = Input.mouseLocation
-            return .ok([String(format: "%.0f %.0f", p.x, p.y)])
+            return .point(Input.mouseLocation)
 
         case "type":
-            guard raw.count == 1 else { throw Usage(message: "type TEXT (quote it as one argument)") }
+            let text = try a.string("text")
             try requireAX()
-            try Input.type(raw[0])
-            return .ok(["typed \(raw[0].count) characters"])
+            try Input.type(text)
+            return ["characters": .int(text.count)]
 
         case "key":
-            guard !raw.isEmpty else { throw Usage(message: "key COMBO [COMBO ...], e.g. cmd+shift+g, return, f5, left") }
-            let parsed = try raw.map { try Input.parseCombo($0) }
+            let combos = try a.strings("combos")
+            guard !combos.isEmpty else { throw CommandError.usage("key needs at least one combo, e.g. cmd+shift+g, return, f5, left") }
+            let parsed = try combos.map { try Input.parseCombo($0) }
             try requireAX()
             for (code, flags) in parsed { try Input.key(code: code, flags: flags) }
-            return .ok()
+            return ["combos": .array(combos.map { .string($0) })]
 
         case "keys":
-            return .ok(Keys.names)
+            return ["keys": .array(Keys.names.map { .string($0) })]
 
         case "open":
-            guard raw.count == 1 else { throw Usage(message: "open APP (name, bundle id, or .app path)") }
-            let a = try await Apps.open(raw[0])
-            return .ok(["\(a.processIdentifier)\t\(a.bundleIdentifier ?? "-")\t\(a.localizedName ?? "?")"])
+            let a = try await Apps.open(try a.string("app"))
+            return Apps.json(a, frontmost: true)
 
         case "apps":
-            return .ok(Apps.listLines())
+            return ["apps": .array(Apps.list())]
 
         case "ui":
-            let a = try Args(raw, valued: ["app", "depth"])
             try requireAX()
-            return .ok(try AXTree.dump(appName: a.flags["app"], maxDepth: try a.int("depth", default: 12)))
+            let depth = try a.int("depth", default: 12)
+            guard depth >= 0 else { throw CommandError.usage("'depth' must be >= 0") }
+            return try AXTree.dump(appName: try a.optString("app"), maxDepth: depth)
 
         case "press", "focus":
-            let a = try Args(raw, valued: ["app"])
-            guard a.positional.count == 1 else { throw Usage(message: "\(command) ID [--app NAME]") }
+            let id = try a.string("id")
             try requireAX()
-            let id = a.positional[0]
-            let line = command == "press" ? try AXTree.press(id, appName: a.flags["app"])
-                                          : try AXTree.focus(id, appName: a.flags["app"])
-            return .ok([line])
+            let el = command == "press" ? try AXTree.press(id, appName: try a.optString("app"))
+                                        : try AXTree.focus(id, appName: try a.optString("app"))
+            return ["element": el]
 
-        case "setvalue":
-            let a = try Args(raw, valued: ["app"])
-            guard a.positional.count == 2 else { throw Usage(message: "setvalue ID TEXT [--app NAME]") }
+        case "set_value":
+            let id = try a.string("id"), value = try a.string("value")
             try requireAX()
-            return .ok([try AXTree.setValue(a.positional[0], a.positional[1], appName: a.flags["app"])])
+            return ["element": try AXTree.setValue(id, value, appName: try a.optString("app"))]
 
         case "screenshot":
-            let a = try Args(raw, valued: ["display", "app"])
-            return .ok(try await Capture.screenshot(displayIndex: try a.int("display", default: 0),
-                                                    appName: a.flags["app"], nativeResolution: a.has("native")))
+            let maxWidth = try a.int("max_width", default: 0)
+            guard maxWidth >= 0 else { throw CommandError.usage("'max_width' must be >= 0") }
+            return try await Capture.screenshot(displayIndex: try a.int("display", default: 0),
+                                                appName: try a.optString("app"),
+                                                nativeResolution: try a.bool("native"),
+                                                maxWidth: maxWidth)
 
-        case "record":
-            let a = try Args(raw, valued: ["display", "dest"])
-            switch a.positional.first {
-            case "start":
-                return .ok(try await Recorder.shared.start(displayIndex: try a.int("display", default: 0),
-                                                           destination: a.flags["dest"] ?? "",
-                                                           force: a.has("force")))
-            case "stop":
-                return .ok(try await Recorder.shared.stop())
-            case "status":
-                return .ok(await Recorder.shared.statusLines())
-            default:
-                throw Usage(message: "record start [-o FILE.mov] [--display N] | record stop | record status")
-            }
+        case "record_start":
+            return try await Recorder.shared.start(displayIndex: try a.int("display", default: 0),
+                                                   destination: try a.optString("dest") ?? "",
+                                                   force: try a.bool("force"))
+        case "record_stop":
+            return try await Recorder.shared.stop()
+        case "record_status":
+            return await Recorder.shared.status()
 
         default:
-            return .error("unknown command '\(command)' (run 'macinto.sh help')")
+            throw CommandError(code: "bad_request", message: "unknown command '\(command)' (is the CLI newer than the app?)")
         }
     }
 
     @MainActor
-    static func statusLines() -> [String] {
+    static func status() -> JSON {
         let s = AppState.shared
         s.refreshPermissions()
-        var lines = [
-            "enabled: \(s.enabled ? "yes" : "no")",
-            "remaining: \(s.enabled ? (s.remainingSeconds.map(String.init) ?? "∞") : "-")",
-            "accessibility: \(s.accessibilityGranted ? "granted" : "missing")",
-            "screen_recording: \(s.screenRecordingGranted ? "granted" : "missing")",
-            "version: \(Paths.version)",
-            "recording: \(Recorder.shared.isRecording ? "yes" : "no")",
+        var o: [String: JSON] = [
+            "enabled": .bool(s.enabled),
+            "unlimited": .bool(s.enabled && s.remainingSeconds == nil),
+            "remaining_seconds": s.remainingSeconds.map { .int($0) } ?? .null,
+            "permissions": ["accessibility": .bool(s.accessibilityGranted),
+                            "screen_recording": .bool(s.screenRecordingGranted)],
+            "version": .string(Paths.version),
+            "recording": .bool(Recorder.shared.isRecording),
+            "displays": .array(Capture.displaysJSON()),
         ]
         if let d = AppDelegate.current {
-            lines.append("status_item: \(d.statusItemDescription)")
-            lines.append("overlay: \(d.overlay.isVisible ? "visible" : "hidden")\(d.overlay.isVisible ? " at \(d.overlay.frameDescription)" : "")")
+            o["status_item"] = .string(d.statusItemDescription)
+            o["overlay"] = ["visible": .bool(d.overlay.isVisible),
+                            "frame": d.overlay.isVisible ? d.overlay.frameJSON : .null]
         }
-        lines += Capture.displayLines()
-        return lines
+        return .object(o)
     }
 }

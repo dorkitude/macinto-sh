@@ -65,44 +65,56 @@ enum AXTree {
         return flat.count > n ? String(flat.prefix(n)) + "…" : flat
     }
 
-    static func describe(_ el: AXUIElement, id: String, depth: Int) -> String {
-        var parts = [String(repeating: "  ", count: depth) + id]
-        var role = stringish(el, kAXRoleAttribute) ?? "?"
-        if let sub = stringish(el, kAXSubroleAttribute) { role += "/" + sub }
-        parts.append(role)
-        if let t = stringish(el, kAXTitleAttribute), !t.isEmpty { parts.append("\"\(clip(t))\"") }
-        if let d = stringish(el, kAXDescriptionAttribute), !d.isEmpty { parts.append("desc=\"\(clip(d))\"") }
-        if let v = stringish(el, kAXValueAttribute), !v.isEmpty { parts.append("value=\"\(clip(v))\"") }
-        if let h = stringish(el, kAXHelpAttribute), !h.isEmpty { parts.append("help=\"\(clip(h, 40))\"") }
-        if let f = frame(el) {
-            parts.append(String(format: "@%.0f,%.0f %.0fx%.0f", f.origin.x, f.origin.y, f.width, f.height))
-        }
-        if let enabled: Bool = attr(el, kAXEnabledAttribute), !enabled { parts.append("disabled") }
-        if let focused: Bool = attr(el, kAXFocusedAttribute), focused { parts.append("focused") }
-        return parts.joined(separator: " ")
+    /// Strings in JSON output are capped so one huge text view can't blow up the response.
+    static func cap(_ s: String?, _ n: Int = 500) -> JSON {
+        guard let s, !s.isEmpty else { return .null }
+        return .string(s.count > n ? String(s.prefix(n)) + "…" : s)
     }
 
-    static func dump(appName: String?, maxDepth: Int) throws -> [String] {
+    static func describe(_ el: AXUIElement, id: String, depth: Int) -> JSON {
+        var o: [String: JSON] = [
+            "id": .string(id),
+            "depth": .int(depth),
+            "role": .string(stringish(el, kAXRoleAttribute) ?? "?"),
+            "subrole": cap(stringish(el, kAXSubroleAttribute)),
+            "title": cap(stringish(el, kAXTitleAttribute)),
+            "description": cap(stringish(el, kAXDescriptionAttribute)),
+            "value": cap(stringish(el, kAXValueAttribute)),
+            "help": cap(stringish(el, kAXHelpAttribute)),
+            "frame": frame(el).map { JSON.rect($0) } ?? .null,
+        ]
+        let enabled: Bool? = attr(el, kAXEnabledAttribute)
+        let focused: Bool? = attr(el, kAXFocusedAttribute)
+        o["enabled"] = .bool(enabled ?? true)
+        o["focused"] = .bool(focused ?? false)
+        return .object(o)
+    }
+
+    static func dump(appName: String?, maxDepth: Int) throws -> JSON {
         let app = try target(appName: appName)
         let root = root(of: app)
-        var lines = ["app: \(app.localizedName ?? "?") (\(app.bundleIdentifier ?? "-"), pid \(app.processIdentifier))"]
+        var elements: [JSON] = []
         var count = 0
         func walk(_ el: AXUIElement, _ id: String, _ depth: Int) {
             guard count < maxNodes else { return }
             count += 1
-            lines.append(describe(el, id: id, depth: depth))
+            elements.append(describe(el, id: id, depth: depth))
             guard depth < maxDepth else { return }
             for (i, c) in children(el).enumerated() { walk(c, "\(id).\(i)", depth + 1) }
         }
         walk(root, "0", 0)
-        if count >= maxNodes { lines.append("(truncated at \(maxNodes) elements; use --depth to limit)") }
-        return lines
+        return [
+            "app": Apps.json(app, frontmost: app.isActive),
+            "elements": .array(elements),
+            "truncated": .bool(count >= maxNodes),
+            "max_elements": .int(maxNodes),
+        ]
     }
 
     static func resolve(_ id: String, appName: String?) throws -> AXUIElement {
         let comps = id.split(separator: ".").map { Int($0) }
         guard !comps.isEmpty, comps.allSatisfy({ $0 != nil }), comps[0] == 0 else {
-            throw Failure(message: "bad element id '\(id)' (expected a path like 0.3.1 from 'macinto.sh ui')")
+            throw CommandError.usage("bad element id '\(id)' (expected a path like 0.3.1 from 'macinto.sh ui')")
         }
         var el = root(of: try target(appName: appName))
         for idx in comps.dropFirst().map({ $0! }) {
@@ -119,19 +131,19 @@ enum AXTree {
         guard err == .success else { throw Failure(message: "\(what) failed (AXError \(err.rawValue))") }
     }
 
-    static func press(_ id: String, appName: String?) throws -> String {
+    static func press(_ id: String, appName: String?) throws -> JSON {
         let el = try resolve(id, appName: appName)
         try check(AXUIElementPerformAction(el, kAXPressAction as CFString), "AXPress on \(id)")
         return describe(el, id: id, depth: 0)
     }
 
-    static func focus(_ id: String, appName: String?) throws -> String {
+    static func focus(_ id: String, appName: String?) throws -> JSON {
         let el = try resolve(id, appName: appName)
         try check(AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue), "focus on \(id)")
         return describe(el, id: id, depth: 0)
     }
 
-    static func setValue(_ id: String, _ text: String, appName: String?) throws -> String {
+    static func setValue(_ id: String, _ text: String, appName: String?) throws -> JSON {
         let el = try resolve(id, appName: appName)
         try check(AXUIElementSetAttributeValue(el, kAXValueAttribute as CFString, text as CFString), "setting value on \(id)")
         return describe(el, id: id, depth: 0)

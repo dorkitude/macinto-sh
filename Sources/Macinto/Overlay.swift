@@ -19,6 +19,11 @@ final class Overlay {
         return String(format: "%.0f,%.0f %.0fx%.0f", f.minX, y, f.width, f.height)
     }
 
+    var frameJSON: JSON {
+        guard let f = panel?.frame, let screen = NSScreen.screens.first else { return .null }
+        return .rect(CGRect(x: f.minX, y: screen.frame.maxY - f.maxY, width: f.width, height: f.height))
+    }
+
     init() {
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in

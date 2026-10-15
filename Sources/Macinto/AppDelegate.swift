@@ -30,30 +30,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var controlWindow: NSPanel?
 
-    /// The same controls as the menu bar popover, in a small window. Used when the menu bar
-    /// icon is hidden, and whenever Macinto is opened again while running (`open -a Macinto`).
-    func showControlWindow() {
+    /// The same controls as the menu bar popover, in a small window. Used when the menu bar icon is
+    /// hidden, and whenever Macinto.sh is opened again while running (`open -a Macinto.sh`).
+    ///
+    /// `explicit` is false when the window appears on its own (menu bar full at launch): it is then
+    /// ordered front without activating the app or becoming key, so it never takes keyboard focus
+    /// from whatever the user is typing into. Even when explicit, no button is first responder and
+    /// none is bound to Return, so a stray keypress can't enable anything.
+    func showControlWindow(explicit: Bool) {
         if controlWindow == nil {
             let host = NSHostingController(rootView: makeMenuView(closeOnInstall: false))
             host.sizingOptions = .preferredContentSize
             let p = NSPanel(contentViewController: host)
-            p.title = "Macinto"
-            p.styleMask = [.titled, .closable, .utilityWindow]
+            p.title = Paths.displayName
+            p.styleMask = [.titled, .closable, .utilityWindow, .nonactivatingPanel]
             p.isFloatingPanel = true
+            p.becomesKeyOnlyIfNeeded = true
             p.hidesOnDeactivate = false
             p.isReleasedWhenClosed = false
             p.center()
             controlWindow = p
         }
-        NSApp.activate()
-        controlWindow?.makeKeyAndOrderFront(nil)
+        guard let p = controlWindow else { return }
+        if explicit {
+            NSApp.activate()
+            p.orderFrontRegardless()
+        } else {
+            p.orderFrontRegardless()
+        }
+        p.makeFirstResponder(nil)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if statusItemOnScreen, !popover.isShown {
             togglePopover(nil)
         } else {
-            showControlWindow()
+            showControlWindow(explicit: true)
         }
         return false
     }
@@ -98,8 +110,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.onEnabledChange = { [weak self] enabled in self?.enabledChanged(enabled) }
         updateIcon()
 
-        let server = SocketServer(path: Paths.socket.path) { command, args, peer in
-            await Commands.handle(command, args, peer)
+        let server = SocketServer(path: Paths.socket.path) { request, peer in
+            await Commands.handle(request, peer)
         }
         do {
             try server.start()
@@ -108,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             ActionLog.shared.write(event: "could not start socket server: \(error)")
             let a = NSAlert()
-            a.messageText = "Macinto could not start"
+            a.messageText = "\(Paths.displayName) could not start"
             a.informativeText = "\(error)"
             a.runModal()
             NSApp.terminate(nil)
@@ -119,11 +131,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let self, !self.statusItemOnScreen else { return }
             ActionLog.shared.write(event: "menu bar icon is hidden by macOS; showing control window")
-            self.showControlWindow()
+            self.showControlWindow(explicit: false)
         }
 
         #if DEBUG
-        // Dev builds only: `open build/debug/Macinto.app --args --enable-for-testing SECONDS`.
+        // Dev builds only: `open "build/debug/Macinto.sh (Dev).app" --args --enable-for-testing SECONDS`.
         // Compiled out of release builds; there is deliberately no way to enable over the socket.
         let argv = CommandLine.arguments
         if let i = argv.firstIndex(of: "--enable-for-testing"), i + 1 < argv.count, let secs = Double(argv[i + 1]),
@@ -147,8 +159,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             overlay.hide()
             if Recorder.shared.isRecording {
                 Task { @MainActor in
-                    if let lines = try? await Recorder.shared.stop() {
-                        ActionLog.shared.write(event: "recording stopped because macinto was disabled: \(lines.first ?? "")")
+                    if case .object(let o)? = try? await Recorder.shared.stop(), case .string(let path)? = o["path"] {
+                        ActionLog.shared.write(event: "recording stopped because macinto was disabled: \(path)")
                     }
                 }
             }
@@ -157,7 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateIcon() {
         statusItem.button?.image = state.enabled ? enabledIcon : disabledIcon
-        statusItem.button?.toolTip = state.enabled ? "macinto: enabled" : "macinto: disabled"
+        statusItem.button?.toolTip = state.enabled ? "\(Paths.displayName): enabled" : "\(Paths.displayName): disabled"
     }
 
     @objc private func togglePopover(_ sender: Any?) {

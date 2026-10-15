@@ -36,23 +36,22 @@ enum Capture {
         }
     }
 
-    static func displayLines() -> [String] {
+    static func displaysJSON() -> [JSON] {
         displays().map { d in
-            String(format: "display %d: origin %.0f,%.0f size %.0fx%.0f scale %.0f%@",
-                   d.index, d.frame.minX, d.frame.minY, d.frame.width, d.frame.height, d.scale,
-                   d.isMain ? " (main)" : "")
+            ["index": .int(d.index), "id": .int(Int(d.id)), "x": .num(d.frame.minX), "y": .num(d.frame.minY),
+             "width": .num(d.frame.width), "height": .num(d.frame.height), "scale": .num(d.scale), "main": .bool(d.isMain)]
         }
     }
 
     static func requirePermission() throws {
-        guard Permissions.screenRecording else { throw Failure(message: Permissions.screenRecordingError) }
+        guard Permissions.screenRecording else { throw Permissions.missing(.screenRecording) }
     }
 
     static func content() async throws -> SCShareableContent {
         do {
             return try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         } catch {
-            throw Failure(message: "ScreenCaptureKit refused (\(error.localizedDescription)). " + Permissions.screenRecordingError)
+            throw Permissions.missing(.screenRecording, detail: "ScreenCaptureKit refused (\(error.localizedDescription))")
         }
     }
 
@@ -86,11 +85,13 @@ enum Capture {
     }
 
     /// Capture a PNG. By default it is scaled to points so image pixels == click coordinates.
-    static func screenshot(displayIndex: Int, appName: String?, nativeResolution: Bool) async throws -> [String] {
+    /// `maxWidth` > 0 scales the image down (keeping aspect) so it is at most that many pixels wide.
+    static func screenshot(displayIndex: Int, appName: String?, nativeResolution: Bool, maxWidth: Int) async throws -> JSON {
         try requirePermission()
         let (filter, info, _) = try await filter(displayIndex: displayIndex, appName: appName)
         let config = SCStreamConfiguration()
-        let scale = nativeResolution ? info.scale : 1
+        var scale = nativeResolution ? info.scale : 1
+        if maxWidth > 0, info.frame.width * scale > CGFloat(maxWidth) { scale = CGFloat(maxWidth) / info.frame.width }
         config.width = Int(info.frame.width * scale)
         config.height = Int(info.frame.height * scale)
         config.showsCursor = true
@@ -108,10 +109,13 @@ enum Capture {
         CGImageDestinationAddImage(dest, image, nil)
         guard CGImageDestinationFinalize(dest) else { throw Failure(message: "could not write \(url.path)") }
         return [
-            "path: \(url.path)",
-            "size: \(image.width)x\(image.height)",
-            String(format: "origin: %.0f,%.0f", info.frame.minX, info.frame.minY),
-            "scale: \(nativeResolution ? "native (\(Int(info.scale))x pixels per point)" : "points")",
+            "path": .string(url.path),
+            "width": .int(image.width),
+            "height": .int(image.height),
+            "origin": ["x": .num(info.frame.minX), "y": .num(info.frame.minY)],
+            "display": .int(displayIndex),
+            // Image pixels per point. 1 means pixel coordinates are click coordinates (offset by origin).
+            "pixels_per_point": .num(CGFloat(image.width) / max(1, info.frame.width)),
         ]
     }
 }
@@ -134,7 +138,7 @@ final class Recorder: NSObject {
 
     var isRecording: Bool { stream != nil }
 
-    func start(displayIndex: Int, destination: String, force: Bool) async throws -> [String] {
+    func start(displayIndex: Int, destination: String, force: Bool) async throws -> JSON {
         guard !isRecording else { throw Capture.Failure(message: "already recording (run 'macinto.sh record stop')") }
         try Capture.requirePermission()
         let (filter, info, _) = try await Capture.filter(displayIndex: displayIndex, appName: nil)
@@ -167,11 +171,11 @@ final class Recorder: NSObject {
         self.finished = false
         self.failure = nil
         AppState.shared.recordingActive = true
-        return ["recording: yes", "path: \(url.path)", "dest: \(destination)"]
+        return ["recording": true, "path": .string(url.path), "dest": .string(destination)]
     }
 
     /// Stop and finalize. Returns the temporary file path plus where the CLI should move it.
-    func stop() async throws -> [String] {
+    func stop() async throws -> JSON {
         guard let stream, let url = fileURL else { throw Capture.Failure(message: "not recording") }
         let started = startedAt ?? Date()
         do { try await stream.stopCapture() } catch {
@@ -192,21 +196,23 @@ final class Recorder: NSObject {
         reset()
         if let failure { throw Capture.Failure(message: "recording failed: \(failure)") }
         return [
-            "path: \(url.path)",
-            "dest: \(result.dest)",
-            "force: \(result.force ? 1 : 0)",
-            String(format: "duration: %.1f", Date().timeIntervalSince(started)),
+            "path": .string(url.path),
+            "dest": .string(result.dest),
+            "force": .bool(result.force),
+            "duration": .num(Date().timeIntervalSince(started)),
         ]
     }
 
-    func statusLines() -> [String] {
+    func status() -> JSON {
+        var o: [String: JSON] = ["recording": .bool(isRecording)]
         if isRecording, let url = fileURL, let s = startedAt {
-            return ["recording: yes", String(format: "elapsed: %.0f", Date().timeIntervalSince(s)),
-                    "path: \(url.path)", "dest: \(destination)"]
+            o["elapsed"] = .num(Date().timeIntervalSince(s))
+            o["path"] = .string(url.path)
+            o["dest"] = .string(destination)
+        } else if let last = lastFinished {
+            o["last"] = ["path": .string(last.url.path), "dest": .string(last.dest)]
         }
-        var lines = ["recording: no"]
-        if let last = lastFinished { lines += ["last: \(last.url.path)", "last_dest: \(last.dest)"] }
-        return lines
+        return .object(o)
     }
 
     private func reset() {

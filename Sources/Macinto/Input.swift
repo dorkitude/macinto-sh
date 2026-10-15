@@ -102,7 +102,7 @@ enum Input {
         var tokens = parts
         if combo.hasSuffix("++") { tokens = Array(parts.dropLast(2)) + ["+"] }
         guard let keyName = tokens.last, !keyName.isEmpty else {
-            throw Failure(message: "usage: key COMBO, e.g. cmd+shift+g, return, escape, f5, left")
+            throw CommandError.usage("bad key combo '\(combo)', e.g. cmd+shift+g, return, escape, f5, left")
         }
         var flags: CGEventFlags = []
         for m in tokens.dropLast() {
@@ -112,11 +112,11 @@ enum Input {
             case "opt", "option", "alt": flags.insert(.maskAlternate)
             case "ctrl", "control": flags.insert(.maskControl)
             case "fn": flags.insert(.maskSecondaryFn)
-            default: throw Failure(message: "unknown modifier '\(m)' (use cmd, shift, opt, ctrl, fn)")
+            default: throw CommandError.usage("unknown modifier '\(m)' (use cmd, shift, opt, ctrl, fn)")
             }
         }
         guard let (code, extra) = Keys.lookup(keyName) else {
-            throw Failure(message: "unknown key '\(keyName)'. Run 'macinto.sh keys' for the list")
+            throw CommandError.usage("unknown key '\(keyName)'. Run 'macinto.sh keys' for the list")
         }
         return (code, flags.union(extra))
     }
