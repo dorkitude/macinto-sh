@@ -1,5 +1,10 @@
 import AppKit
 
+// A client that disconnects before its reply is written must not kill the app. SO_NOSIGPIPE is set
+// per connection, but setsockopt can fail on a socket whose peer is already gone, and the write that
+// follows would then raise SIGPIPE (default action: terminate, with no crash report).
+signal(SIGPIPE, SIG_IGN)
+
 MainActor.assumeIsolated {
     #if DEBUG
     Snapshot.runIfRequested() // exits when --snapshot is given
